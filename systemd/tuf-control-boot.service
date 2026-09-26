@@ -1,0 +1,16 @@
+[Unit]
+Description=TUF Control - re-apply the saved boot profile
+# power-profiles-daemon restores its own profile when it starts; apply ours after it
+After=power-profiles-daemon.service
+Wants=power-profiles-daemon.service
+
+[Service]
+Type=oneshot
+Environment=TUF_USER=@USER@
+WorkingDirectory=/opt/tuf-control/backend
+ExecStartPre=/bin/sleep 3
+ExecStart=/opt/tuf-control/venv/bin/python -m tuf.apply_boot
+SuccessExitStatus=1
+
+[Install]
+WantedBy=graphical.target

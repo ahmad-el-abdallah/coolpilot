@@ -1,0 +1,18 @@
+# dependencies / build output
+node_modules/
+frontend/dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# never commit local state (it lives in /etc/tuf-control anyway)
+*.token
+config.json
+profiles.json
+stability.json

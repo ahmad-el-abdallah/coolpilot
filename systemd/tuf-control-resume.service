@@ -1,0 +1,14 @@
+[Unit]
+Description=TUF Control - re-apply the last profile after sleep or charger plug/unplug
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+Environment=TUF_USER=@USER@
+WorkingDirectory=/opt/tuf-control/backend
+ExecStartPre=/bin/sleep 2
+ExecStart=/opt/tuf-control/venv/bin/python -m tuf.apply_boot --reapply
+SuccessExitStatus=1
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
