@@ -17,11 +17,30 @@ mkdir -p "$LOGS"
 hw() { for d in /sys/class/hwmon/hwmon*; do [[ $(<"$d/name") == "$1" ]] && { echo "$d"; return; }; done; }
 rd() { [[ -r $1 ]] && cat "$1" 2>/dev/null || echo 0; }
 milli() { echo $(( $(rd "$1") / 1000 )); }
+# stop a process and everything it started (only our own processes - never match by name)
+killtree() { local c; for c in $(pgrep -P "$1"); do killtree "$c"; done; kill "$1" 2>/dev/null; }
+# first power supply of a type (Battery / Mains) - names differ per model (BAT0/BAT1, AC0/ACAD/ADP1)
+psu() { for d in /sys/class/power_supply/*; do
+  [[ $(cat "$d/type" 2>/dev/null) == "$1" && $(cat "$d/scope" 2>/dev/null) != Device ]] && { echo "$d"; return; }
+done; }
+# glmark2 on the discrete GPU (NVIDIA PRIME offload or DRI_PRIME), whichever build the distro ships
+gpu_load() {
+  local exe
+  for exe in glmark2 glmark2-wayland glmark2-es2 glmark2-es2-wayland ""; do command -v "$exe" >/dev/null && break; done
+  [[ -z $exe ]] && { echo "glmark2 not installed - no GPU load"; return; }
+  if [[ -e /proc/driver/nvidia/version ]] || command -v nvidia-smi >/dev/null; then
+    __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia "$exe" "$@" >/dev/null 2>&1 &
+  else
+    DRI_PRIME=1 "$exe" "$@" >/dev/null 2>&1 &
+  fi
+}
 
 monitor() {
   local log="$1" kl="$2"
-  local CPU NV ASUS BAT=/sys/class/power_supply/BAT1 AC=/sys/class/power_supply/ACAD
-  CPU=$(hw k10temp); NV=$(hw nvme); ASUS=$(hw asus)
+  local CPU NV ASUS BAT AC
+  BAT=$(psu Battery); AC=$(psu Mains)
+  CPU=$(hw k10temp); [[ -z $CPU ]] && CPU=$(hw zenpower); [[ -z $CPU ]] && CPU=$(hw coretemp)  # AMD / Intel
+  NV=$(hw nvme); ASUS=$(hw asus)
   mapfile -t SPD < <(for d in /sys/class/hwmon/hwmon*; do [[ $(<"$d/name") == spd5118 ]] && echo "$d"; done)
 
   # kernel messages (PCIe/AER errors, GPU falling off the bus, NVMe resets, MCE...)
@@ -56,8 +75,7 @@ start_load() {
     ram)  stress-ng --vm 4 --vm-bytes 75% --vm-method all --verify -q & ;;
     disk) mkdir -p "$DIR/diskload"
           stress-ng --hdd 2 --hdd-bytes 2G --temp-path "$DIR/diskload" -q & ;;
-    gpu)  __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia \
-            glmark2 --run-forever -s 1920x1080 >/dev/null 2>&1 & ;;
+    gpu)  gpu_load --run-forever -s 1920x1080 ;;
     all)  start_load cpu; start_load gpu; start_load disk ;;
     *) echo "unknown test: $t"; exit 1 ;;
   esac
@@ -73,7 +91,7 @@ cmd_test() {
   echo "== Ctrl+C to stop early."
   monitor "$log" "$kl" & local MON=$!
   start_load "$TEST"
-  trap 'pkill -P $$; pkill -f "stress-ng|glmark2" 2>/dev/null; kill $MON 2>/dev/null; rm -rf "$DIR/diskload"; echo; echo "== stopped, survived. log: $log"; echo "survived $TEST $(date)" >> "$DIR/results.txt"; exit' INT TERM
+  trap 'for p in $(pgrep -P $$); do killtree "$p"; done; rm -rf "$DIR/diskload"; echo; echo "== stopped, survived. log: $log"; echo "survived $TEST $(date)" >> "$DIR/results.txt"; exit' INT TERM
   cat <<'EOF'
 == While pressing an area, hit its key (logged with time):
    1 top-left (above keyboard)   2 top-middle   3 top-right

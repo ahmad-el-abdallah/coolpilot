@@ -457,3 +457,53 @@ def test_warranty_info_is_user_supplied(client):
                                                   "territory": "International"}).get_json()
     assert d["warranty"] == {"start": "2025-01-01", "end": "2027-01-01", "territory": "International", "note": None}
     assert client.post("/api/system/warranty", json={"clear": True}).get_json()["warranty"] is None
+
+
+# ----------------------------------------------------------------- other laptops / distros
+def test_intel_turbo_switch_is_inverted(client):
+    import glob
+    import os
+    from conftest import ROOT, w
+    for f in glob.glob(f"{ROOT}/sys/devices/system/cpu/cpu*/cpufreq/boost") + [f"{ROOT}/sys/devices/system/cpu/cpufreq/boost"]:
+        os.remove(f)
+    w("sys/devices/system/cpu/intel_pstate/no_turbo", 0)          # 0 = turbo allowed
+    s = {x["key"]: x for x in client.get("/api/settings").get_json()}
+    assert s["cpu_boost"]["available"] and s["cpu_boost"]["value"] is True
+    client.post("/api/settings/cpu_boost", json={"value": False})
+    assert read("sys/devices/system/cpu/intel_pstate/no_turbo") == "1"
+
+
+def test_low_power_named_models(client):
+    from conftest import w
+    w("sys/firmware/acpi/platform_profile_choices", "low-power balanced performance")
+    res = client.post("/api/stability", json={"enabled": True}).get_json()["results"]
+    assert res["platform_profile"] == "ok"
+    assert read("sys/firmware/acpi/platform_profile") == "low-power"
+
+
+def test_battery_and_charger_found_by_type(client):
+    import os
+    import shutil
+    from conftest import ROOT, w
+    ps = f"{ROOT}/sys/class/power_supply"
+    shutil.move(f"{ps}/BAT1", f"{ps}/BAT0")
+    shutil.move(f"{ps}/ACAD", f"{ps}/AC0")
+    w("sys/class/power_supply/AC0/online", 1)
+    w("sys/class/power_supply/hidpp_battery_0/type", "Battery")       # a wireless mouse
+    w("sys/class/power_supply/hidpp_battery_0/scope", "Device")
+    s = client.get("/api/sensors").get_json()
+    assert s["battery"]["ac"] is True and s["battery"]["percent"] == 77
+    assert client.post("/api/settings/charge_limit", json={"value": 70}).status_code == 200
+    assert read("sys/class/power_supply/BAT0/charge_control_end_threshold") == "70"
+    shutil.rmtree(f"{ps}/BAT0"), shutil.rmtree(f"{ps}/AC0"), shutil.rmtree(f"{ps}/hidpp_battery_0")
+    assert not os.path.exists(f"{ps}/BAT1")  # the autouse fixture rebuilds it for the next test
+
+
+def test_intel_cpu_temperature(client):
+    import shutil
+    from conftest import ROOT, w
+    shutil.rmtree(f"{ROOT}/sys/class/hwmon/hwmon5")
+    w("sys/class/hwmon/hwmon3/name", "coretemp")
+    w("sys/class/hwmon/hwmon3/temp1_input", 61000)
+    assert client.get("/api/sensors").get_json()["cpu"]["temp"] == 61.0
+    shutil.rmtree(f"{ROOT}/sys/class/hwmon/hwmon3")

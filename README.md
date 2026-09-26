@@ -34,27 +34,50 @@ hardware fault (freezes when moved under load), so it also includes a configurab
 
 ## Requirements
 
-- **Linux with systemd** (developed on Arch Linux; any distro with a recent kernel should work)
-- **An ASUS TUF / ROG laptop** using the kernel's `asus-wmi` / `asus-armoury` drivers.
-  Anything your kernel doesn't expose is simply shown as "not supported".
-- **Python 3.11+** with `venv` (system Python at `/usr/bin/python3`)
-- **Node.js 20.19+ or 22.12+** and **npm** (only to build the web UI)
+Works on **any Linux distribution with systemd** — Arch / Manjaro / EndeavourOS, Debian / Ubuntu /
+Mint / Pop!_OS, Fedora, openSUSE, and others — with any desktop (GNOME, KDE, Hyprland, Sway, X11 or Wayland).
 
-Optional, for extra features:
-
-| Package | Used for |
+| Needed | Why |
 |---|---|
-| `power-profiles-daemon` | switching Silent / Balanced / Turbo without fighting the daemon |
-| `stress-ng` | CPU / RAM / SSD crash tests |
-| `glmark2` | GPU crash test and PCIe press test load |
-| `nvidia-utils` (`nvidia-smi`) | GPU temperature / power / clock readings |
-| `pciutils` (`lspci`) | device names on the PCIe page |
+| **systemd** | runs the panel and re-applies settings after boot / sleep |
+| **Python 3.9+** with `venv` | the backend (tested on Python 3.9, 3.10, 3.12, 3.13 and 3.14) |
+| **An ASUS TUF / ROG laptop** | uses the kernel's `asus-wmi` / `asus-armoury` drivers — AMD or Intel CPU, NVIDIA or no dGPU |
+| Node.js 20.19+ / 22.12+ *(optional)* | only to rebuild the UI — a prebuilt UI is included |
 
-On Arch:
+Optional tools (crash tests and extra readings): `stress-ng`, `glmark2`, `pciutils` (`lspci`),
+`nvidia-smi` (comes with the NVIDIA driver), `power-profiles-daemon`.
+
+**Install the requirements for your distro:**
 
 ```bash
-sudo pacman -S --needed python nodejs npm stress-ng glmark2 pciutils power-profiles-daemon
+# Arch / Manjaro / EndeavourOS
+sudo pacman -S --needed git python stress-ng glmark2 pciutils power-profiles-daemon
+
+# Debian / Ubuntu / Mint / Pop!_OS
+sudo apt install git python3 python3-venv stress-ng glmark2 pciutils power-profiles-daemon
+
+# Fedora
+sudo dnf install git python3 stress-ng glmark2 pciutils
+
+# openSUSE (Leap needs python311; Tumbleweed's python3 is fine)
+sudo zypper install git python311 stress-ng glmark2 pciutils power-profiles-daemon
 ```
+
+Package names can differ slightly between releases, and some distros split glmark2 into separate
+X11 / Wayland / ES2 builds — any of them works.
+
+**What depends on your kernel / model** — anything missing just shows as "not supported":
+
+| Feature | Needs |
+|---|---|
+| Silent / Balanced / Turbo | `platform_profile` (all recent kernels) |
+| CPU & GPU power limits, GPU Dynamic Boost | the `asus-armoury` driver (recent kernels) |
+| Custom fan curves | `asus_custom_fan_curve` (kernel 5.17+, most TUF/ROG models) |
+| CPU boost switch | AMD (`amd-pstate` / `acpi-cpufreq`) or Intel (`intel_pstate`) |
+| PCIe press test | an NVIDIA dGPU |
+
+Not supported: distros without systemd (Void, Alpine, Artix/OpenRC), and NixOS through the
+installer (paths like `/opt` and `/etc/systemd/system` are managed declaratively there).
 
 ---
 
@@ -63,6 +86,7 @@ sudo pacman -S --needed python nodejs npm stress-ng glmark2 pciutils power-profi
 ```bash
 git clone https://github.com/ahmad-el-abdallah/tuf-control.git
 cd tuf-control
+./install.sh --check      # optional: checks this system and tells you what's missing
 sudo ./install.sh
 ```
 
@@ -70,16 +94,26 @@ Then open **http://127.0.0.1:8787** — or launch **TUF Control** from your app 
 
 `install.sh` will:
 
-1. build the React UI (as your normal user; it also finds Node installed through `mise`),
-2. copy the app to `/opt/tuf-control` and create a Python venv with Flask + Waitress,
-3. create a secret API token in `/etc/tuf-control/token`,
-4. install and enable the systemd services:
+1. check the system (Python, drivers, optional tools, conflicting services) and stop with the
+   exact package to install if something required is missing,
+2. rebuild the UI if a recent Node is available (system, `mise`, `nvm`, `fnm`, `volta`, `asdf`),
+   otherwise use the prebuilt one,
+3. copy the app to `/opt/tuf-control` and create a Python venv with Flask + Waitress,
+4. create a secret API token in `/etc/tuf-control/token`,
+5. install and enable the systemd services:
    - `tuf-control` — the web panel (port **8787**, localhost only)
    - `tuf-control-boot` — re-applies your "apply at boot" profile and fan mode after boot
    - `tuf-control-resume` — re-applies after sleep and when the charger is plugged / unplugged
      (via a udev rule; ASUS firmware swaps its power-limit tables then)
-5. copy the crash-test scripts to `~/crashdiag` (existing logs are left alone),
-6. add a "TUF Control" launcher entry.
+6. copy the crash-test scripts to `~/crashdiag` (existing logs are left alone),
+7. add a "TUF Control" launcher entry.
+
+### Other tools that manage the same settings
+
+`asusctl` (`asusd`), TLP, auto-cpufreq, TuneD and laptop-mode-tools also change power modes,
+CPU boost, fan curves or charge limits, and can silently undo changes made here. The installer
+and the Dashboard warn when one of them is running — use one tool for these settings, e.g.
+`sudo systemctl disable --now tlp`.
 
 ### Update
 
@@ -180,7 +214,7 @@ install.sh / uninstall.sh
 # backend tests (use a fake sysfs tree - safe to run anywhere)
 cd backend && uv run pytest          # or: python -m venv .venv && pip install flask waitress pytest
 
-# frontend type-check and build
+# frontend type-check and build (commit frontend/dist too - it's the prebuilt UI)
 cd frontend && npm install && npm run lint && npm run build
 
 # run the UI with hot reload against a running backend
@@ -205,3 +239,7 @@ cd backend && TUF_PORT=8788 TUF_CONFIG_DIR=/tmp/tuf-conf uv run python -m tuf
 | A setting shows 🔒 | the firmware locks it right now (usually on battery) — plug in the charger |
 | Profile not re-applied after boot | `journalctl -u tuf-control-boot` |
 | Fan curves reset | make sure you picked a fan mode on the Fans page — it is re-applied after reboot / sleep / mode changes |
+| Settings keep changing back | another tool (asusctl, TLP, auto-cpufreq, TuneD) is managing them — see the Dashboard warning |
+| Crash history only shows the current boot | the journal isn't persistent: `sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald` |
+| `python3 -m venv` fails (Debian / Ubuntu) | `sudo apt install python3-venv` |
+| GPU crash test does nothing | install `glmark2`; on NVIDIA laptops make sure the NVIDIA driver is loaded (`nvidia-smi`) |

@@ -56,8 +56,11 @@ BUILTIN: dict[str, dict] = {
     },
 }
 
-PPD_NAMES = {"quiet": "power-saver", "low-power": "power-saver",
+PPD_NAMES = {"quiet": "power-saver", "low-power": "power-saver", "cool": "power-saver",
              "balanced": "balanced", "performance": "performance"}
+# models name the modes differently (e.g. "low-power" instead of "quiet")
+PROFILE_ALIASES = {"quiet": ["low-power", "cool"], "low-power": ["quiet", "cool"],
+                   "cool": ["quiet", "low-power"], "performance": ["balanced-performance"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -184,6 +187,13 @@ def resolve(key: str, value):
         if value is None:
             raise Skip("no default")
     note = ""
+    if key == "platform_profile":
+        opts = s.choices() if s.choices else []
+        if value not in opts:
+            alt = next((a for a in PROFILE_ALIASES.get(value, []) if a in opts), None)
+            if alt is None:
+                raise Skip(f"'{value}' mode doesn't exist on this laptop")
+            value = alt
     if s.kind == "int":
         lo, hi = (s.min() if s.min else None), (s.max() if s.max else None)
         if value == MIN:
@@ -243,7 +253,7 @@ def apply_settings(settings: dict) -> dict:
 
 
 def _power_source() -> str:
-    return "on charger" if sysfs.read("sys/class/power_supply/ACAD/online") == "1" else "on battery"
+    return "on charger" if sysfs.on_ac() else "on battery"
 
 
 def is_ok(result: str) -> bool:

@@ -9,8 +9,13 @@
 # Press an area of the laptop, hit its number key, and watch whether errors jump.
 # Log: ~/crashdiag/logs/<time>-pcie.log  (fsync'd, survives a crash)
 
-GPU=/sys/bus/pci/devices/0000:01:00.0
-ROOT=/sys/bus/pci/devices/0000:00:01.1
+# the NVIDIA GPU and the CPU root port it hangs off (addresses differ per laptop)
+GPU=
+for d in /sys/bus/pci/devices/*; do
+  [[ $(cat "$d/vendor") == 0x10de && $(cat "$d/class") == 0x03* ]] && { GPU=$d; break; }
+done
+[[ -n $GPU ]] || { echo "No NVIDIA GPU found on the PCIe bus"; exit 1; }
+ROOT=$(dirname "$(readlink -f "$GPU")")
 LOGS="$HOME/crashdiag/logs"; mkdir -p "$LOGS"
 LOG="$LOGS/$(date +%Y%m%d-%H%M%S)-pcie.log"
 [[ -r $GPU/aer_dev_correctable ]] || { echo "GPU PCIe error counters not readable"; exit 1; }
@@ -23,10 +28,15 @@ declare -A AREA=([1]=top-left [2]=top-middle [3]=top-right [4]=palm-left [5]=tou
   [6]=palm-right [7]=hinge-left [8]=hinge-right [9]=lift/tilt [0]=not-touching)
 
 LOAD=
-if [[ $1 != --no-load ]]; then
-  __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia \
-    glmark2 --off-screen --run-forever -s 800x600 >/dev/null 2>&1 &
-  LOAD=$!
+if [[ ${1:-} != --no-load ]]; then
+  for exe in glmark2 glmark2-wayland glmark2-es2 glmark2-es2-wayland ""; do command -v "$exe" >/dev/null && break; done
+  if [[ -n $exe ]]; then
+    __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia \
+      "$exe" --off-screen --run-forever -s 800x600 >/dev/null 2>&1 &
+    LOAD=$!
+  else
+    echo "glmark2 not installed - watching without GPU load (the GPU may sleep)"
+  fi
 fi
 trap '[[ -n $LOAD ]] && kill $LOAD 2>/dev/null; echo; echo "log: $LOG"; exit' INT TERM
 

@@ -2,7 +2,7 @@
 name = "tuf-control"
 version = "1.0.0"
 description = "Local web control panel for the ASUS TUF A15"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = ["flask>=3.0", "waitress>=3.0"]
 
 [dependency-groups]

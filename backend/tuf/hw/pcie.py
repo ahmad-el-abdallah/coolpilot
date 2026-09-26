@@ -195,11 +195,10 @@ def _sample_loop() -> None:
 
 
 def _start_load() -> str | None:
-    if not shutil.which("glmark2"):
+    cmd = diag.gpu_load_cmd()
+    if not cmd:
         return "glmark2 not installed - watching without GPU load"
-    cmd = diag._as_user(["env", "__NV_PRIME_RENDER_OFFLOAD=1", "__GLX_VENDOR_LIBRARY_NAME=nvidia",
-                         "glmark2", "--off-screen", "--run-forever", "-s", "800x600"])
-    _w.load = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    _w.load = subprocess.Popen(diag._as_user(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                start_new_session=True)
     return None
 

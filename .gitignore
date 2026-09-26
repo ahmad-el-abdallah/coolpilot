@@ -1,6 +1,6 @@
 # dependencies / build output
 node_modules/
-frontend/dist/
+# frontend/dist IS committed: a prebuilt UI so installing doesn't need Node
 .venv/
 __pycache__/
 *.pyc

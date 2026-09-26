@@ -4,6 +4,8 @@ from __future__ import annotations
 import html
 import os
 import re
+import shutil
+import subprocess
 import platform
 import time
 
@@ -16,6 +18,27 @@ DIST = os.environ.get(
     "TUF_DIST", os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
 
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+# services that manage the same settings and would silently undo changes
+CONFLICTS = {
+    "asusd": "asusctl daemon - manages performance mode, fan curves and charge limit",
+    "tlp": "TLP - manages CPU boost, energy preference and charge thresholds",
+    "auto-cpufreq": "auto-cpufreq - manages CPU boost and frequency",
+    "tuned": "TuneD - manages CPU and power profiles",
+    "laptop-mode": "laptop-mode-tools - manages CPU and power settings",
+}
+
+
+def conflicts() -> list[dict]:
+    if not shutil.which("systemctl"):
+        return []
+    try:
+        r = subprocess.run(["systemctl", "is-active", *CONFLICTS], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    states = r.stdout.split()
+    return [{"unit": u, "what": CONFLICTS[u]} for u, st in zip(CONFLICTS, states) if st == "active"]
 
 
 def _err(msg: str, code: int = 400):
@@ -88,6 +111,7 @@ def create_app(token: str | None = None) -> Flask:
             "governor": r("sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
             "gpu_state": gpu.power_state(),
             "warranty": profiles.config().get("warranty"),
+            "conflicts": conflicts(),
             "features": {"fan_curves": fans.available(), "diagnostics": diag.available(),
                          "pcie_errors": pcie.available(),
                          "gpu_mode_switch": False},

@@ -6,10 +6,12 @@ area marks are sent to it the same way a key press would be (its stdin).
 from __future__ import annotations
 
 import collections
+import glob
 import json
 import os
 import pwd
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -48,13 +50,63 @@ class _Run:
 _run = _Run()
 
 
+SESSION_VARS = ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS")
+
+
+def session_env() -> dict[str, str]:
+    """Display variables of the user's desktop session, whatever it is (GNOME,
+    KDE, Hyprland, Sway, X11...). Desktops export them to the user's systemd
+    manager; fall back to looking at the Wayland / X11 sockets."""
+    runtime = f"/run/user/{_pw.pw_uid}"
+    env: dict[str, str] = {}
+    base = ["runuser", "-u", USER, "--"] if os.getuid() == 0 else []
+    try:
+        out = subprocess.run([*base, "env", f"XDG_RUNTIME_DIR={runtime}", "systemctl", "--user",
+                              "show-environment"], capture_output=True, text=True, timeout=5).stdout
+        for line in out.splitlines():
+            k, _, v = line.partition("=")
+            if k in SESSION_VARS and v:
+                env[k] = v
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    if "WAYLAND_DISPLAY" not in env:
+        socks = [x for x in sorted(glob.glob(f"{runtime}/wayland-[0-9]*")) if not x.endswith(".lock")]
+        if socks:
+            env["WAYLAND_DISPLAY"] = os.path.basename(socks[0])
+    if "DISPLAY" not in env:
+        xs = sorted(glob.glob("/tmp/.X11-unix/X[0-9]*"))
+        if xs:
+            env["DISPLAY"] = ":" + os.path.basename(xs[0])[1:]
+    if "DBUS_SESSION_BUS_ADDRESS" not in env and os.path.exists(f"{runtime}/bus"):
+        env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={runtime}/bus"
+    for var, override in (("DISPLAY", "TUF_DISPLAY"), ("WAYLAND_DISPLAY", "TUF_WAYLAND_DISPLAY")):
+        if os.environ.get(override):
+            env[var] = os.environ[override]
+    return env
+
+
 def _as_user(args: list[str]) -> list[str]:
-    env = [f"HOME={HOME}", f"USER={USER}", f"XDG_RUNTIME_DIR=/run/user/{_pw.pw_uid}",
-           f"WAYLAND_DISPLAY={os.environ.get('TUF_WAYLAND_DISPLAY', 'wayland-1')}",
-           f"DISPLAY={os.environ.get('TUF_DISPLAY', ':0')}", "PATH=/usr/local/bin:/usr/bin:/bin"]
+    env = [f"HOME={HOME}", f"USER={USER}", f"LOGNAME={USER}", f"XDG_RUNTIME_DIR=/run/user/{_pw.pw_uid}",
+           "PATH=/usr/local/bin:/usr/bin:/bin", *(f"{k}={v}" for k, v in session_env().items())]
     if os.getuid() == 0:
         return ["runuser", "-u", USER, "--", "env", *env, *args]
     return ["env", *env, *args]
+
+
+def nvidia_present() -> bool:
+    return os.path.exists("/proc/driver/nvidia/version") or bool(shutil.which("nvidia-smi"))
+
+
+def gpu_load_cmd(size: str = "800x600") -> list[str] | None:
+    """glmark2 on the discrete GPU: NVIDIA PRIME offload, or DRI_PRIME for AMD/Mesa.
+    Distros ship different builds (glmark2 / -wayland / -es2), use what's there."""
+    exe = next((e for e in ("glmark2", "glmark2-wayland", "glmark2-es2", "glmark2-es2-wayland")
+                if shutil.which(e)), None)
+    if not exe:
+        return None
+    offload = (["__NV_PRIME_RENDER_OFFLOAD=1", "__GLX_VENDOR_LIBRARY_NAME=nvidia"] if nvidia_present()
+               else ["DRI_PRIME=1"])
+    return ["env", *offload, exe, "--off-screen", "--run-forever", "-s", size]
 
 
 def available() -> bool:
@@ -170,22 +222,45 @@ def results() -> list[str]:
 def report() -> str:
     if not available():
         raise DiagError(f"{SCRIPT} not found")
-    r = subprocess.run(_as_user(["bash", SCRIPT, "report"]), capture_output=True, text=True,
-                       timeout=30, cwd=DIAG_DIR)
+    # run as root (only reads): the kernel log sections need journal access, which
+    # a normal user doesn't have on every distro
+    r = subprocess.run(["bash", SCRIPT, "report"], capture_output=True, text=True, timeout=30,
+                       cwd=DIAG_DIR, env={**os.environ, "HOME": HOME})
     return r.stdout + r.stderr
 
 
 _boot_cache: dict[str, dict] = {}
+BOOT_LINE = re.compile(r"^\s*(-?\d+)\s+([0-9a-f]{32})\s+\w{3},? (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"
+                       r".*?\w{3},? (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+
+
+def _list_boots() -> list[dict]:
+    """journalctl --list-boots as dicts. JSON output needs systemd 251+; older
+    systemd (Ubuntu 22.04, Debian 11...) only prints text, so parse that."""
+    try:
+        r = subprocess.run(["journalctl", "--list-boots", "-o", "json", "--no-pager"],
+                           capture_output=True, text=True, timeout=15)
+        boots = json.loads(r.stdout)
+        if isinstance(boots, list):
+            return boots
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    try:
+        r = subprocess.run(["journalctl", "--list-boots", "--no-pager"], capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    out = []
+    for line in r.stdout.splitlines():
+        m = BOOT_LINE.match(line)
+        if m:
+            t0, t1 = (time.mktime(time.strptime(x, "%Y-%m-%d %H:%M:%S")) for x in (m[3], m[4]))
+            out.append({"index": int(m[1]), "boot_id": m[2], "first_entry": t0 * 1e6, "last_entry": t1 * 1e6})
+    return out
 
 
 def crash_history(limit: int = 30) -> list[dict]:
     """Boots whose journal ends without any shutdown messages = crash/freeze/reset."""
-    try:
-        r = subprocess.run(["journalctl", "--list-boots", "-o", "json", "--no-pager"],
-                           capture_output=True, text=True, timeout=15)
-        boots = json.loads(r.stdout or "[]")
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return []
+    boots = _list_boots()
     out = []
     for b in boots[-limit:]:
         bid = b.get("boot_id")

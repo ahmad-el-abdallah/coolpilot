@@ -1,8 +1,8 @@
 [Unit]
 Description=TUF Control - re-apply the saved boot profile
-# power-profiles-daemon restores its own profile when it starts; apply ours after it
-After=power-profiles-daemon.service
-Wants=power-profiles-daemon.service
+# power-profile daemons restore their own profile when they start; apply ours after
+# them (power-profiles-daemon on most distros, tuned/tuned-ppd on Fedora 41+)
+After=power-profiles-daemon.service tuned.service tuned-ppd.service
 
 [Service]
 Type=oneshot

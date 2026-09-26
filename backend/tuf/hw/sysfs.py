@@ -69,6 +69,26 @@ def find_all_hwmon(name: str) -> list[str]:
     return [d for d in glob_rel("sys/class/hwmon/hwmon*") if read(f"{d}/name") == name]
 
 
+def power_supply(kind: str, want: str | None = None) -> str | None:
+    """First power supply of this type ('Battery' or 'Mains'). Names differ per
+    model (BAT0/BAT1/BATT, AC/AC0/ACAD/ADP1), so match on type; skip device
+    batteries (wireless mice...) and prefer one that has the `want` file."""
+    found = [d for d in glob_rel("sys/class/power_supply/*")
+             if read(f"{d}/type") == kind and read(f"{d}/scope") != "Device"]
+    if want:
+        found.sort(key=lambda d: not exists(f"{d}/{want}"))
+    return found[0] if found else None
+
+
+def battery() -> str | None:
+    return power_supply("Battery", "charge_control_end_threshold")
+
+
+def on_ac() -> bool:
+    ac = power_supply("Mains")
+    return bool(ac) and read(f"{ac}/online") == "1"
+
+
 def first_backlight() -> str | None:
     found = glob_rel("sys/class/backlight/*")
     return found[0] if found else None
@@ -95,6 +115,8 @@ class Setting:
     # convert UI value <-> raw sysfs value (e.g. MHz <-> kHz)
     to_raw: Callable[[object], str] = str
     from_raw: Callable[[str], object] | None = None
+    # bool files where 1 means "off" (Intel's intel_pstate/no_turbo)
+    inverted: Callable[[str], bool] = lambda path: False
 
     def available(self) -> bool:
         return bool(self.paths()) and all(exists(x) for x in self.paths())
@@ -111,7 +133,7 @@ class Setting:
         if self.kind == "int":
             return int(raw)
         if self.kind == "bool":
-            return raw in ("1", "Y", "y", "on")
+            return (raw in ("1", "Y", "y", "on")) != self.inverted(paths[0])
         return raw
 
     def describe(self) -> dict:
@@ -165,9 +187,12 @@ class Setting:
             raise SettingError(f"{self.label} is fixed at {self.min()}{self.unit} by the firmware right now "
                                "(ASUS locks some limits on battery - plug in the charger to change it)")
         value = self.validate(value)
-        raw = ("1" if value else "0") if self.kind == "bool" else self.to_raw(value)
         errors = []
         for path in self.paths():
+            if self.kind == "bool":
+                raw = "1" if value != self.inverted(path) else "0"
+            else:
+                raw = self.to_raw(value)
             try:
                 write(path, raw)
             except OSError as e:
@@ -180,8 +205,19 @@ class Setting:
 # Helpers for specific settings
 # --------------------------------------------------------------------------- #
 
-def _armoury(attr: str, key: str, label: str, group: str, kind: str = "int", **kw) -> Setting:
+def _armoury(attr: str, key: str, label: str, group: str, kind: str = "int",
+             legacy: str | None = None, **kw) -> Setting:
+    """asus-armoury firmware attribute (newer kernels: has min/max/default).
+    `legacy` is the old asus-nb-wmi file, only used for on/off settings since it
+    carries no range information."""
     base = f"{ARMOURY}/{attr}"
+
+    def paths():
+        if exists(f"{base}/current_value"):
+            return [f"{base}/current_value"]
+        if legacy and kind == "bool" and exists(f"sys/devices/platform/asus-nb-wmi/{legacy}"):
+            return [f"sys/devices/platform/asus-nb-wmi/{legacy}"]
+        return []
 
     def choices():
         pv = read(f"{base}/possible_values") or ""
@@ -192,8 +228,7 @@ def _armoury(attr: str, key: str, label: str, group: str, kind: str = "int", **k
         extra = dict(min=lambda: read_int(f"{base}/min_value"),
                      max=lambda: read_int(f"{base}/max_value"),
                      default=lambda: read_int(f"{base}/default_value"))
-    return Setting(key=key, label=label, group=group, kind=kind,
-                   paths=lambda: [f"{base}/current_value"], **extra, **kw)
+    return Setting(key=key, label=label, group=group, kind=kind, paths=paths, **extra, **kw)
 
 
 def _max_freq_khz() -> int | None:
@@ -215,15 +250,14 @@ def _led(rel_fn: Callable[[], str | None], attr: str) -> Callable[[], list[str]]
 
 
 KBD = "sys/class/leds/asus::kbd_backlight"
-BAT = "sys/class/power_supply/BAT1"
 
 SETTINGS: dict[str, Setting] = {s.key: s for s in [
     Setting(
         key="platform_profile", label="Performance mode", group="power", kind="choice",
         paths=lambda: ["sys/firmware/acpi/platform_profile"],
         choices=lambda: (read("sys/firmware/acpi/platform_profile_choices") or "").split(),
-        help="ASUS fan/power mode. Quiet = silent, cooler, slower. Same as Fn+F5.",
-        keywords=["silent", "quiet", "balanced", "performance", "turbo", "fn f5", "mode", "fan"],
+        help="ASUS fan/power mode. Silent = cooler and slower. Same as Fn+F5.",
+        keywords=["silent", "quiet", "low-power", "balanced", "performance", "turbo", "fn f5", "mode", "fan"],
         default=lambda: "balanced"),
     Setting(
         key="epp", label="CPU energy preference", group="cpu", kind="choice",
@@ -236,10 +270,12 @@ SETTINGS: dict[str, Setting] = {s.key: s for s in [
         key="cpu_boost", label="CPU boost", group="cpu", kind="bool",
         # per-CPU files first: they are what actually applies (the global file can
         # read 1 while every policy is 0)
-        paths=lambda: cpu_policies("boost") + [x for x in ["sys/devices/system/cpu/cpufreq/boost"] if exists(x)],
-        help="Allow the CPU to run above its base clock (up to ~4.5 GHz). Off = much cooler.",
-        keywords=["turbo", "boost", "precision boost", "frequency", "ghz", "heat"],
-        from_raw=lambda raw: raw == "1",
+        # read 1 while every policy is 0). Intel (intel_pstate) only has no_turbo.
+        paths=lambda: (cpu_policies("boost") + [x for x in ["sys/devices/system/cpu/cpufreq/boost"] if exists(x)])
+        or [x for x in ["sys/devices/system/cpu/intel_pstate/no_turbo"] if exists(x)],
+        inverted=lambda path: path.endswith("no_turbo"),
+        help="Allow the CPU to run above its base clock (Precision Boost / Turbo Boost). Off = much cooler.",
+        keywords=["turbo", "boost", "precision boost", "turbo boost", "frequency", "ghz", "heat"],
         default=lambda: True),
     Setting(
         key="cpu_max_mhz", label="Max CPU frequency", group="cpu", kind="int", unit="MHz",
@@ -269,18 +305,18 @@ SETTINGS: dict[str, Setting] = {s.key: s for s in [
              help="Power allowed for very short spikes (seconds).",
              keywords=["tdp", "watts", "power limit", "fppt", "ppt", "spike"]),
     _armoury("nv_dynamic_boost", "gpu_dynamic_boost", "GPU Dynamic Boost", "gpu", unit="W",
-             help="Extra watts the RTX 4060 can borrow from the CPU budget.",
+             help="Extra watts the NVIDIA GPU can borrow from the CPU budget.",
              keywords=["nvidia", "rtx", "dynamic boost", "gpu power", "watts"]),
     _armoury("nv_temp_target", "gpu_temp_target", "GPU temperature target", "gpu", unit="°C",
              help="GPU slows down to stay under this temperature.",
              keywords=["nvidia", "rtx", "temperature", "thermal", "throttle"]),
-    _armoury("panel_overdrive", "panel_overdrive", "Panel overdrive", "display", kind="bool",
+    _armoury("panel_overdrive", "panel_overdrive", "Panel overdrive", "display", kind="bool", legacy="panel_od",
              help="Faster pixel response on the internal screen (less ghosting).",
              keywords=["screen", "display", "overdrive", "ghosting", "response time"],
              from_raw=lambda raw: raw == "1"),
     Setting(
         key="charge_limit", label="Battery charge limit", group="battery", kind="int", unit="%",
-        paths=lambda: [f"{BAT}/charge_control_end_threshold"],
+        paths=lambda: [f"{battery()}/charge_control_end_threshold"] if battery() else [],
         min=lambda: 20, max=lambda: 100, default=lambda: 100,
         help="Stop charging at this level. 80% greatly extends battery life when plugged in often.",
         keywords=["battery", "charge", "limit", "health", "80"]),

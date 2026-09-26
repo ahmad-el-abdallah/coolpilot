@@ -6,8 +6,8 @@ import time
 
 from . import gpu, sysfs
 
-BAT = "sys/class/power_supply/BAT1"
-AC = "sys/class/power_supply/ACAD"
+# CPU temperature drivers: AMD (k10temp / zenpower) and Intel (coretemp: temp1 = package)
+CPU_TEMP_DRIVERS = ("k10temp", "zenpower", "coretemp")
 
 _prev_stat: tuple[int, int] | None = None
 
@@ -40,15 +40,16 @@ def _cpu_mhz() -> dict:
 
 
 def snapshot() -> dict:
-    cpu = sysfs.find_hwmon("k10temp")
+    bat = sysfs.battery() or "sys/class/power_supply/none"
+    cpu = next((d for d in map(sysfs.find_hwmon, CPU_TEMP_DRIVERS) if d), None)
     nvme = sysfs.find_hwmon("nvme")
     asus = sysfs.find_hwmon("asus")
     spd = sysfs.find_all_hwmon("spd5118")
 
-    volt = sysfs.read_int(f"{BAT}/voltage_now")
-    power = sysfs.read_int(f"{BAT}/power_now")
+    volt = sysfs.read_int(f"{bat}/voltage_now")
+    power = sysfs.read_int(f"{bat}/power_now")
     if not power:
-        cur = sysfs.read_int(f"{BAT}/current_now")
+        cur = sysfs.read_int(f"{bat}/current_now")
         power = cur * volt // 1_000_000 if cur and volt else None
 
     load = (sysfs.read("proc/loadavg") or "0 0 0").split()[:3]
@@ -69,12 +70,12 @@ def snapshot() -> dict:
         "ssd": {"temp": _milli(f"{nvme}/temp1_input") if nvme else None},
         "fans": [sysfs.read_int(f"{asus}/fan{i}_input") for i in (1, 2)] if asus else [],
         "battery": {
-            "percent": sysfs.read_int(f"{BAT}/capacity"),
-            "status": sysfs.read(f"{BAT}/status"),
+            "percent": sysfs.read_int(f"{bat}/capacity"),
+            "status": sysfs.read(f"{bat}/status"),
             "volts": round(volt / 1e6, 2) if volt else None,
             "watts": round(power / 1e6, 1) if power else None,
-            "ac": sysfs.read(f"{AC}/online") == "1",
-            "health": _battery_health(),
+            "ac": sysfs.on_ac(),
+            "health": _battery_health(bat),
         },
         "gpu": gpu.snapshot(),
         "profile": sysfs.read("sys/firmware/acpi/platform_profile"),
@@ -93,7 +94,7 @@ def _meminfo() -> dict:
     return {"used_gb": round((total - (avail or 0)) / 1048576, 1), "total_gb": round(total / 1048576, 1)}
 
 
-def _battery_health() -> float | None:
-    full = sysfs.read_int(f"{BAT}/energy_full") or sysfs.read_int(f"{BAT}/charge_full")
-    design = sysfs.read_int(f"{BAT}/energy_full_design") or sysfs.read_int(f"{BAT}/charge_full_design")
+def _battery_health(bat: str) -> float | None:
+    full = sysfs.read_int(f"{bat}/energy_full") or sysfs.read_int(f"{bat}/charge_full")
+    design = sysfs.read_int(f"{bat}/energy_full_design") or sysfs.read_int(f"{bat}/charge_full_design")
     return round(100 * full / design, 1) if full and design else None

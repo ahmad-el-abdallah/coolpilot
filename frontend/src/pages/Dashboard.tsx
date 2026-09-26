@@ -7,6 +7,7 @@ import { fmt, summarize, tempTone, usePoll, useSensorHistory, useSettings, useTo
 export function Dashboard({ go }: { go: (page: string) => void }) {
   const { now, history, error } = useSensorHistory()
   const { data: prof, refresh: refreshProf } = usePoll<ProfilesState>('/profiles', 5000)
+  const { data: sys } = usePoll<{ conflicts: { unit: string; what: string }[] }>('/system', 60000)
   const { refresh } = useSettings()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
@@ -52,6 +53,16 @@ export function Dashboard({ go }: { go: (page: string) => void }) {
   return (
     <div className="page">
       {error && <div className="banner bad">Backend unreachable: {error}</div>}
+      {!!sys?.conflicts.length && (
+        <div className="banner warn">
+          <b>Another tool is managing the same settings</b> and may undo changes made here:
+          <ul className="plain-list">
+            {sys.conflicts.map((c) => <li key={c.unit}><span className="mono">{c.unit}</span> — {c.what}</li>)}
+          </ul>
+          Consider disabling it (<span className="mono">sudo systemctl disable --now {sys.conflicts.map((c) => c.unit).join(' ')}</span>) or
+          only using one tool for these settings.
+        </div>
+      )}
 
       <Card className={`hero ${stability ? 'on' : ''}`}>
         <div className="hero-body">
