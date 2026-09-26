@@ -263,3 +263,4 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 10px; }
 .warranty-form .wide { grid-column: 1 / -1; }
 .warranty-form .row { grid-column: 1 / -1; margin-top: 4px; }
 a { color: var(--accent); }
+.icon svg { vertical-align: -0.12em; }

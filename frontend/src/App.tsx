@@ -13,10 +13,17 @@ import { Profiles } from './pages/Profiles'
 import { Stability } from './pages/Stability'
 import { System } from './pages/System'
 
+// monochrome bolt: the ⚡ character is drawn as a colour emoji by most fonts
+const Bolt = () => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true">
+    <path fill="currentColor" d="M13.5 2 4 13.5h6.5L9.5 22 20 9.5h-6.8L13.5 2z" />
+  </svg>
+)
+
 const PAGES = [
   { id: 'dashboard', label: 'Dashboard', icon: '◉', keywords: 'home overview sensors temperature live stability' },
   { id: 'stability', label: 'Stability mode', icon: '⛨', keywords: 'stability safe workaround freeze crash protect configure preset cool' },
-  { id: 'power', label: 'Power & CPU', icon: '⚡', keywords: 'silent quiet mode ghz frequency boost watts tdp' },
+  { id: 'power', label: 'Power & CPU', icon: <Bolt />, keywords: 'silent quiet mode ghz frequency boost watts tdp' },
   { id: 'fans', label: 'Fans', icon: '✱', keywords: 'fan curve rpm noise cooling' },
   { id: 'gpu', label: 'GPU', icon: '▣', keywords: 'nvidia rtx graphics' },
   { id: 'battery', label: 'Battery & Display', icon: '▭', keywords: 'charge limit brightness keyboard backlight screen' },
