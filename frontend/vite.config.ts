@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Dev: run with VITE_TUF_TOKEN=<token from /etc/tuf-control/token>; changeOrigin keeps the Host check happy.
+// Dev: run with VITE_COOLPILOT_TOKEN=<token from /etc/coolpilot/token>; changeOrigin keeps the Host check happy.
 export default defineConfig({
   plugins: [react()],
   server: {

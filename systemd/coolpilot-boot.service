@@ -1,15 +1,15 @@
 [Unit]
-Description=TUF Control - re-apply the saved boot profile
+Description=CoolPilot - re-apply the saved boot profile
 # power-profile daemons restore their own profile when they start; apply ours after
 # them (power-profiles-daemon on most distros, tuned/tuned-ppd on Fedora 41+)
 After=power-profiles-daemon.service tuned.service tuned-ppd.service
 
 [Service]
 Type=oneshot
-Environment=TUF_USER=@USER@
-WorkingDirectory=/opt/tuf-control/backend
+Environment=COOLPILOT_USER=@USER@
+WorkingDirectory=/opt/coolpilot/backend
 ExecStartPre=/bin/sleep 3
-ExecStart=/opt/tuf-control/venv/bin/python -m tuf.apply_boot
+ExecStart=/opt/coolpilot/venv/bin/python -m coolpilot.apply_boot
 SuccessExitStatus=1
 
 [Install]

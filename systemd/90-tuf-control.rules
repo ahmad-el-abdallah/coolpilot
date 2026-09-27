@@ -1,3 +1,0 @@
-# TUF Control: ASUS firmware swaps its power-limit tables when the charger is
-# plugged/unplugged, so re-apply the last profile (clamped to the new limits).
-SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ACTION=="change", RUN+="/usr/bin/systemctl start --no-block tuf-control-resume.service"

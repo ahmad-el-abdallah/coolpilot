@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install / update TUF Control.
+# Install / update CoolPilot.
 #
 #   sudo ./install.sh          install or update
 #   ./install.sh --check       only check this system (no changes, no root needed)
@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SRC=$(cd "$(dirname "$0")" && pwd)
-DEST=/opt/tuf-control
+DEST=/opt/coolpilot
 PORT=8787
 CHECK_ONLY=false
 [[ ${1:-} == --check ]] && CHECK_ONLY=true
@@ -127,7 +127,7 @@ if [[ ! -d /var/log/journal ]]; then
 fi
 
 if ((FATAL)); then red "==> Can't install until the ✗ items above are fixed."; exit 1; fi
-if $CHECK_ONLY; then grn "==> This system can run TUF Control. Install with:  sudo ./install.sh"; exit 0; fi
+if $CHECK_ONLY; then grn "==> This system can run CoolPilot. Install with:  sudo ./install.sh"; exit 0; fi
 
 # ================================================================== install
 if [[ -n $NODE_BIN ]]; then
@@ -137,6 +137,21 @@ if [[ -n $NODE_BIN ]]; then
     [[ -f $SRC/frontend/dist/index.html ]] || { red "UI build failed and no prebuilt UI exists"; exit 1; }
     warn "UI build failed — using the prebuilt one"
   fi
+fi
+
+# ------------------------------------------------------------------ migrate from the old name (tuf-control)
+if [[ -e /etc/systemd/system/tuf-control.service || -d /opt/tuf-control || -d /etc/tuf-control ]]; then
+  echo "==> Migrating from the old name (tuf-control → coolpilot)"
+  systemctl disable --now tuf-control.service tuf-control-boot.service tuf-control-resume.service 2>/dev/null || true
+  rm -f /etc/systemd/system/tuf-control{,-boot,-resume}.service /etc/udev/rules.d/90-tuf-control.rules
+  rm -rf /opt/tuf-control
+  rm -f "$USER_HOME/.local/share/applications/tuf-control.desktop"
+  if [[ -d /etc/tuf-control && ! -e /etc/coolpilot ]]; then
+    mv /etc/tuf-control /etc/coolpilot   # saved profiles, Stability setup, token
+  elif [[ -d /etc/tuf-control ]]; then
+    warn "/etc/coolpilot already exists — left the old /etc/tuf-control in place (delete it if you don't need it)"
+  fi
+  systemctl daemon-reload
 fi
 
 echo "==> Copying the app to $DEST"
@@ -155,23 +170,23 @@ fi
 "$DEST/venv/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade "flask>=3.0" "waitress>=3.0"
 command -v restorecon >/dev/null && restorecon -R "$DEST" 2>/dev/null || true   # SELinux (Fedora)
 
-echo "==> Config + token in /etc/tuf-control"
-install -d -m 700 /etc/tuf-control
-if [[ ! -s /etc/tuf-control/token ]]; then
-  (umask 077; "$PYTHON" -c "import secrets; print(secrets.token_urlsafe(32))" > /etc/tuf-control/token)
+echo "==> Config + token in /etc/coolpilot"
+install -d -m 700 /etc/coolpilot
+if [[ ! -s /etc/coolpilot/token ]]; then
+  (umask 077; "$PYTHON" -c "import secrets; print(secrets.token_urlsafe(32))" > /etc/coolpilot/token)
 fi
 
 echo "==> systemd services + udev rule"
 SYSTEMCTL=$(command -v systemctl)
-for u in tuf-control tuf-control-boot tuf-control-resume; do
+for u in coolpilot coolpilot-boot coolpilot-resume; do
   sed "s/@USER@/$USER_NAME/" "$SRC/systemd/$u.service" > "/etc/systemd/system/$u.service"
 done
-sed "s|/usr/bin/systemctl|$SYSTEMCTL|" "$SRC/systemd/90-tuf-control.rules" > /etc/udev/rules.d/90-tuf-control.rules
+sed "s|/usr/bin/systemctl|$SYSTEMCTL|" "$SRC/systemd/90-coolpilot.rules" > /etc/udev/rules.d/90-coolpilot.rules
 udevadm control --reload
 systemctl daemon-reload
-systemctl enable tuf-control-boot.service tuf-control-resume.service >/dev/null
-systemctl enable tuf-control.service >/dev/null
-systemctl restart tuf-control.service
+systemctl enable coolpilot-boot.service coolpilot-resume.service >/dev/null
+systemctl enable coolpilot.service >/dev/null
+systemctl restart coolpilot.service
 
 echo "==> Crash-test scripts in $USER_HOME/crashdiag (logs there are left alone)"
 runuser -u "$USER_NAME" -- mkdir -p "$USER_HOME/crashdiag/logs"
@@ -182,22 +197,22 @@ done
 echo "==> App launcher entry"
 APPS="$USER_HOME/.local/share/applications"
 runuser -u "$USER_NAME" -- mkdir -p "$APPS"
-cat > "$APPS/tuf-control.desktop" <<DESKTOP
+cat > "$APPS/coolpilot.desktop" <<DESKTOP
 [Desktop Entry]
-Name=TUF Control
-Comment=Fans, power, CPU frequency and crash diagnostics for ASUS TUF laptops
+Name=CoolPilot
+Comment=Fans, power, CPU frequency and crash diagnostics for your laptop
 Exec=xdg-open http://127.0.0.1:$PORT
 Icon=preferences-system
 Terminal=false
 Type=Application
 Categories=System;Settings;
 DESKTOP
-chown "$USER_NAME:$USER_GROUP" "$APPS/tuf-control.desktop"
+chown "$USER_NAME:$USER_GROUP" "$APPS/coolpilot.desktop"
 
 up() { "$PYTHON" -c "import urllib.request as u; u.urlopen('http://127.0.0.1:$PORT/', timeout=2)" 2>/dev/null; }
 for _ in $(seq 30); do up && break; sleep 0.5; done
 if up; then
-  grn "✅ TUF Control is running: http://127.0.0.1:$PORT"
+  grn "✅ CoolPilot is running: http://127.0.0.1:$PORT"
 else
-  red "⚠️  The service didn't answer yet. Check:  journalctl -u tuf-control -n 50"
+  red "⚠️  The service didn't answer yet. Check:  journalctl -u coolpilot -n 50"
 fi

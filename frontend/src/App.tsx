@@ -49,6 +49,7 @@ export default function App() {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [search, setSearch] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
+  const [device, setDevice] = useState('')
 
   const go = useCallback((p: string, anchor?: string) => {
     location.hash = `#/${p}`
@@ -89,6 +90,9 @@ export default function App() {
     try { setSettings(await api.get<Setting[]>('/settings')) } catch (e) { toast('error', (e as Error).message) }
   }, [toast])
   useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    api.get<{ device: string }>('/system').then((d) => setDevice(d.device)).catch(() => {})
+  }, [])
 
   const set = useCallback(async (key: string, value: unknown) => {
     try {
@@ -141,7 +145,7 @@ export default function App() {
       <ToastContext.Provider value={toast}>
         <div className={`app ${navOpen ? 'nav-open' : ''}`}>
           <aside className="nav">
-            <div className="brand"><span className="logo">T</span><div><b>TUF Control</b><small>ASUS TUF</small></div></div>
+            <div className="brand"><span className="logo">C</span><div><b>CoolPilot</b><small title={device}>{device || '…'}</small></div></div>
             <button className="search-btn" onClick={() => setSearch(true)}>⌕ Search <kbd>Ctrl K</kbd></button>
             <nav>
               {PAGES.map((p) => (

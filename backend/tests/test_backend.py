@@ -3,12 +3,12 @@ from conftest import ARM, read
 
 # ----------------------------------------------------------------- security
 def test_missing_token_rejected(client):
-    r = client.get("/api/settings", headers={"X-TUF-Token": ""})
+    r = client.get("/api/settings", headers={"X-CoolPilot-Token": ""})
     assert r.status_code == 403
 
 
 def test_wrong_token_rejected(client):
-    r = client.post("/api/settings/charge_limit", json={"value": 80}, headers={"X-TUF-Token": "nope"})
+    r = client.post("/api/settings/charge_limit", json={"value": 80}, headers={"X-CoolPilot-Token": "nope"})
     assert r.status_code == 403
     assert read("sys/class/power_supply/BAT1/charge_control_end_threshold") == "100"
 
@@ -20,13 +20,13 @@ def test_foreign_host_rejected(client):
 
 def test_token_injected_into_page(client, tmp_path):
     import os
-    dist = os.environ["TUF_DIST"]
+    dist = os.environ["COOLPILOT_DIST"]
     os.makedirs(dist, exist_ok=True)
     with open(f"{dist}/index.html", "w") as f:
         f.write("<html><head></head><body></body></html>")
-    r = client.get("/", headers={"X-TUF-Token": ""})
+    r = client.get("/", headers={"X-CoolPilot-Token": ""})
     assert r.status_code == 200
-    assert b'name="tuf-token" content="test-token"' in r.data
+    assert b'name="coolpilot-token" content="test-token"' in r.data
 
 
 # ----------------------------------------------------------------- settings
@@ -125,7 +125,7 @@ def test_builtin_protected(client):
 
 
 def test_boot_profile(client):
-    from tuf import profiles
+    from coolpilot import profiles
     client.post("/api/profiles/Quiet/boot", json={"enabled": True})
     assert profiles.config()["boot_profile"] == "Quiet"
     results = profiles.apply_boot()
@@ -192,7 +192,7 @@ def test_pcie_watch_counts_errors_per_area(client):
     assert areas["baseline"]["errors"] == 0
     assert st["per_area"][0]["area"] == "top-right"  # worst area first
     import os
-    from tuf import diag
+    from coolpilot import diag
     with open(os.path.join(diag.LOGS, st["log"])) as f:
         log = f.read()
     assert "now pressing: top-right" in log and "+30" in log
@@ -220,7 +220,7 @@ def _on_battery_limits():
 
 
 def test_stability_on_battery_has_no_failures(client):
-    from tuf import profiles
+    from coolpilot import profiles
     _on_battery_limits()
     res = client.post("/api/stability", json={"enabled": True}).get_json()["results"]
     assert all(profiles.is_ok(v) for v in res.values()), res
@@ -236,7 +236,7 @@ def test_stability_on_charger_uses_minimum_gpu_boost(client):
 
 
 def test_profile_values_clamped_to_battery_range(client):
-    from tuf import profiles
+    from coolpilot import profiles
     res = profiles.apply_settings({"ppt_pl1": 80, "ppt_pl3": 80})
     assert res["ppt_pl1"] == "ok"
     _on_battery_limits()
@@ -255,7 +255,7 @@ def test_locked_setting_direct_change_explains(client):
 
 
 def test_reapply_uses_last_applied_profile(client):
-    from tuf import profiles
+    from coolpilot import profiles
     client.post("/api/profiles/Quiet/boot", json={"enabled": True})
     client.post("/api/profiles/Performance/apply")
     client.post("/api/settings/platform_profile", json={"value": "balanced"})  # manual change clears active
@@ -320,7 +320,7 @@ def test_stability_survives_manual_change_and_off_restores_only_managed(client):
 
 
 def test_stability_fan_option(client):
-    from tuf.hw import fans
+    from coolpilot.hw import fans
     client.post("/api/stability/config", json={"fans": {"enabled": True, "preset": "cool"}})
     client.post("/api/stability", json={"enabled": True})
     assert read("sys/class/hwmon/hwmon9/pwm1_enable") == "1"
@@ -359,7 +359,7 @@ def test_stability_status_firmware_on_battery(client):
 
 
 def test_stability_on_from_older_install_is_recognised(client):
-    from tuf import profiles
+    from coolpilot import profiles
     profiles.update_config(active_profile="Stability")  # what the previous version stored
     assert client.get("/api/stability").get_json()["on"] is True
 
@@ -376,7 +376,7 @@ def _firmware_reloads_curves():
 
 
 def test_fan_mode_stability_and_default(client):
-    from tuf.hw import fans
+    from coolpilot.hw import fans
     d = client.post("/api/fans/mode", json={"mode": "stability"}).get_json()
     assert d["mode"] == "stability" and d["controlled_by"] == "stability"
     assert read(f"{HW}/pwm1_enable") == "1" and read(f"{HW}/pwm2_enable") == "1"
@@ -394,7 +394,7 @@ def test_fan_mode_survives_performance_mode_change(client):
 
 
 def test_fan_mode_reapplied_at_boot_without_boot_profile(client):
-    from tuf import profiles
+    from coolpilot import profiles
     client.post("/api/fans/mode", json={"mode": "stability"})
     _firmware_reloads_curves()
     profiles.apply_boot()
@@ -412,7 +412,7 @@ def test_hand_edited_curve_becomes_custom_and_sticks(client):
 
 
 def test_stability_mode_fan_option_wins_then_hands_back(client):
-    from tuf.hw import fans
+    from coolpilot.hw import fans
     client.post("/api/fans/mode", json={"mode": "default"})
     client.post("/api/stability/config", json={"fans": {"enabled": True, "preset": "max"}})
     client.post("/api/stability", json={"enabled": True})
@@ -423,7 +423,7 @@ def test_stability_mode_fan_option_wins_then_hands_back(client):
 
 
 def test_factory_reset_everything(client):
-    from tuf import profiles, stability
+    from coolpilot import profiles, stability
     client.post("/api/settings/charge_limit", json={"value": 60})
     client.post("/api/profiles", json={"name": "Mine"})
     client.post("/api/stability/config", json={"items": {"cpu_max_mhz": {"value": 2000}}})
@@ -569,3 +569,25 @@ def test_section_fans_default_and_stability(client):
 def test_section_validation(client):
     assert client.post("/api/stability/section", json={"section": "gpu", "mode": "turbo"}).status_code == 400
     assert client.post("/api/stability/section", json={"section": "wifi", "mode": "default"}).status_code == 400
+
+
+# ----------------------------------------------------------------- device name in the nav
+def test_device_name_from_dmi(client):
+    from conftest import w
+    from coolpilot.app import device_name
+    cases = [
+        ("ASUSTeK COMPUTER INC.", "ASUS TUF Gaming A15 FA507NVR_FA507NVR", "", "ASUS TUF Gaming A15 FA507NVR"),
+        ("ASUSTeK COMPUTER INC.", "ROG Zephyrus G14 GA402RJ_GA402RJ", "", "ASUS ROG Zephyrus G14 GA402RJ"),
+        ("LENOVO", "82JU", "Legion 5 15ACH6H", "Lenovo Legion 5 15ACH6H"),
+        ("Dell Inc.", "XPS 13 9310", "", "Dell XPS 13 9310"),
+        ("HP", "HP Victus by HP Laptop 16-d0xxx", "", "HP Victus by HP Laptop 16-d0xxx"),
+        ("Micro-Star International Co., Ltd.", "Katana GF66 11UE", "", "MSI Katana GF66 11UE"),
+        ("To be filled by O.E.M.", "System Product Name", "", "This laptop"),
+        ("", "", "", "This laptop"),
+    ]
+    for vendor, product, version, want in cases:
+        w("sys/class/dmi/id/sys_vendor", vendor)
+        w("sys/class/dmi/id/product_name", product)
+        w("sys/class/dmi/id/product_version", version)
+        assert device_name() == want, (vendor, product)
+    assert client.get("/api/system").get_json()["device"] == "This laptop"

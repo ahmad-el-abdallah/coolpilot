@@ -1,6 +1,6 @@
 """The backend runs as root, so every /api request must:
   * arrive with an allowed Host header (blocks DNS-rebinding from web pages), and
-  * carry the secret X-TUF-Token header (blocks cross-site requests: other sites
+  * carry the secret X-CoolPilot-Token header (blocks cross-site requests: other sites
     can't read the token from our page, and custom headers force a CORS
     preflight we never approve).
 """
@@ -14,19 +14,19 @@ from flask import abort, request
 
 from .profiles import CONFIG_DIR
 
-PORT = int(os.environ.get("TUF_PORT", "8787"))
+PORT = int(os.environ.get("COOLPILOT_PORT", "8787"))
 TOKEN_FILE = os.path.join(CONFIG_DIR, "token")
 
 
 def allowed_hosts() -> set[str]:
     hosts = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
-    extra = os.environ.get("TUF_EXTRA_HOSTS", "")
+    extra = os.environ.get("COOLPILOT_EXTRA_HOSTS", "")
     hosts.update(h.strip() for h in extra.split(",") if h.strip())
     return hosts
 
 
 def load_token() -> str:
-    env = os.environ.get("TUF_TOKEN")
+    env = os.environ.get("COOLPILOT_TOKEN")
     if env:
         return env
     try:
@@ -52,7 +52,7 @@ def install(app, token: str) -> None:
         if request.host not in hosts:
             abort(403, "host not allowed")
         if request.path.startswith("/api/"):
-            sent = request.headers.get("X-TUF-Token", "")
+            sent = request.headers.get("X-CoolPilot-Token", "")
             if not hmac.compare_digest(sent, token):
                 abort(403, "missing or bad token")
 

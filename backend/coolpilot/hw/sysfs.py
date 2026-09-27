@@ -2,7 +2,7 @@
 
 Every setting is described once in SETTINGS. Writes go through `write_setting`,
 which validates against the setting's type and range; nothing accepts raw paths.
-`TUF_SYSFS_ROOT` lets tests point everything at a fake tree.
+`COOLPILOT_SYSFS_ROOT` lets tests point everything at a fake tree.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Callable
 
-ROOT = os.environ.get("TUF_SYSFS_ROOT", "/")
+ROOT = os.environ.get("COOLPILOT_SYSFS_ROOT", "/")
 
 ARMOURY = "sys/class/firmware-attributes/asus-armoury/attributes"
 CPUFREQ = "sys/devices/system/cpu"

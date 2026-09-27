@@ -11,7 +11,7 @@ __pycache__/
 .idea/
 .DS_Store
 
-# never commit local state (it lives in /etc/tuf-control anyway)
+# never commit local state (it lives in /etc/coolpilot anyway)
 *.token
 config.json
 profiles.json

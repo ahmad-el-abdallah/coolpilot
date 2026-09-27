@@ -1,7 +1,7 @@
 [project]
-name = "tuf-control"
+name = "coolpilot"
 version = "1.0.0"
-description = "Local web control panel for the ASUS TUF A15"
+description = "CoolPilot: local web control panel for laptop power, fans and stability"
 requires-python = ">=3.9"
 dependencies = ["flask>=3.0", "waitress>=3.0"]
 

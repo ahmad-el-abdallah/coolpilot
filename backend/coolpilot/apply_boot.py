@@ -1,5 +1,5 @@
-"""Apply the boot profile (tuf-control-boot.service), or with --reapply the last
-applied profile (tuf-control-resume.service: after sleep / charger plug-unplug)."""
+"""Apply the boot profile (coolpilot-boot.service), or with --reapply the last
+applied profile (coolpilot-resume.service: after sleep / charger plug-unplug)."""
 import json
 import sys
 

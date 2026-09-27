@@ -1,7 +1,7 @@
 """Stability mode: a user-configurable set of protections against the
 freeze/reset fault (less heat and current = less stress on weak solder joints).
 
-Config lives in $TUF_CONFIG_DIR/stability.json and only stores what the user
+Config lives in $COOLPILOT_CONFIG_DIR/stability.json and only stores what the user
 changed; everything else falls back to RECOMMENDED. While Stability is on,
 config changes apply immediately, and an item that gets switched off is
 restored to its value from before Stability was turned on.

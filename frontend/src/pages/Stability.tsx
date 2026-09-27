@@ -287,8 +287,8 @@ export function Stability() {
               <Badge tone="info">{st.power_source}</Badge>
             </h2>
             <p className="muted">
-              Less heat and less current means less flexing of the board and its solder joints, so fewer freezes
-              until the laptop is repaired. Choose below exactly which protections you want.
+              Less heat and less current means less flexing of the board and its solder joints — it helps
+              laptops that freeze or reset under load. Choose below exactly which protections you want.
             </p>
             <div className="meter" title={`${st.enabled_count} of ${st.total_count} protections included`}>
               <span style={{ width: `${level * 100}%` }} />

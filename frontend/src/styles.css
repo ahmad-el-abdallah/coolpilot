@@ -5,7 +5,7 @@
   --line: #2a2e37;
   --text: #e8eaef;
   --muted: #8b91a0;
-  --accent: #f5a524;      /* TUF amber */
+  --accent: #f5a524;      /* amber */
   --accent-ink: #1a1204;
   --orange: #ff8a3d;
   --green: #3ecf8e;
@@ -42,7 +42,8 @@ kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-
 .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
 .nav { position: sticky; top: 0; height: 100vh; border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 12px; background: var(--panel); }
 .brand { display: flex; gap: 10px; align-items: center; padding: 4px 6px 8px; }
-.brand small { display: block; color: var(--muted); font-size: 11px; }
+.brand > div { min-width: 0; }
+.brand small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.35; }
 .logo { width: 32px; height: 32px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 800; }
 .nav nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a { color: var(--muted); text-decoration: none; padding: 8px 10px; border-radius: 8px; display: flex; gap: 10px; align-items: center; }

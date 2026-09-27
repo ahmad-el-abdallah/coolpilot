@@ -4,15 +4,15 @@ import tempfile
 
 import pytest
 
-ROOT = tempfile.mkdtemp(prefix="tuf-sysfs-")
-CONF = tempfile.mkdtemp(prefix="tuf-conf-")
-os.environ["TUF_SYSFS_ROOT"] = ROOT
-os.environ["TUF_CONFIG_DIR"] = CONF
-os.environ["TUF_TOKEN"] = "test-token"
-os.environ["TUF_DIST"] = os.path.join(ROOT, "dist")
+ROOT = tempfile.mkdtemp(prefix="coolpilot-sysfs-")
+CONF = tempfile.mkdtemp(prefix="coolpilot-conf-")
+os.environ["COOLPILOT_SYSFS_ROOT"] = ROOT
+os.environ["COOLPILOT_CONFIG_DIR"] = CONF
+os.environ["COOLPILOT_TOKEN"] = "test-token"
+os.environ["COOLPILOT_DIST"] = os.path.join(ROOT, "dist")
 os.environ["PATH"] = "/nonexistent"  # no powerprofilesctl / nvidia-smi / lspci / glmark2 in tests
-os.environ["TUF_DIAG_DIR"] = tempfile.mkdtemp(prefix="tuf-diag-")
-os.environ["TUF_PCIE_INTERVAL"] = "0.05"
+os.environ["COOLPILOT_DIAG_DIR"] = tempfile.mkdtemp(prefix="coolpilot-diag-")
+os.environ["COOLPILOT_PCIE_INTERVAL"] = "0.05"
 
 ARM = "sys/class/firmware-attributes/asus-armoury/attributes"
 
@@ -107,9 +107,9 @@ def read(rel):
 
 @pytest.fixture
 def client():
-    from tuf.app import create_app
+    from coolpilot.app import create_app
     app = create_app("test-token")
     app.config["SERVER_NAME"] = "127.0.0.1:8787"  # makes the test client send this Host
     c = app.test_client()
-    c.environ_base["HTTP_X_TUF_TOKEN"] = "test-token"
+    c.environ_base["HTTP_X_COOLPILOT_TOKEN"] = "test-token"
     return c

@@ -69,8 +69,8 @@ export function Dashboard({ go }: { go: (page: string) => void }) {
           <div>
             <h2>Stability mode {stability ? <Badge tone="good">ON</Badge> : <Badge>OFF</Badge>}</h2>
             <p className="muted">
-              Workaround for the freeze/reset fault until the board is repaired: less heat and current → less
-              board expansion → fewer freezes.{' '}
+              Keeps the laptop cool and steady — less heat and current means less stress on the board,
+              which helps laptops that freeze or reset under load.{' '}
               <button className="link" onClick={() => go('stability')}>Choose what it changes →</button>
             </p>
           </div>

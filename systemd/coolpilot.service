@@ -1,0 +1,16 @@
+[Unit]
+Description=CoolPilot web panel (http://127.0.0.1:8787)
+After=network.target
+
+[Service]
+Type=simple
+Environment=COOLPILOT_USER=@USER@
+Environment=COOLPILOT_DIST=/opt/coolpilot/frontend/dist
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/coolpilot/backend
+ExecStart=/opt/coolpilot/venv/bin/python -m coolpilot
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

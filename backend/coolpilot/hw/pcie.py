@@ -20,7 +20,7 @@ from .. import diag
 from . import sysfs
 
 PCI = "sys/bus/pci/devices"
-INTERVAL = float(os.environ.get("TUF_PCIE_INTERVAL", "1"))
+INTERVAL = float(os.environ.get("COOLPILOT_PCIE_INTERVAL", "1"))
 GENS = {"2.5": 1, "5.0": 2, "8.0": 3, "16.0": 4, "32.0": 5, "64.0": 6}
 
 _names: dict[str, str] = {}

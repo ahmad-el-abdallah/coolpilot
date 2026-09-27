@@ -1,4 +1,4 @@
-"""Run the server: python -m tuf  (waitress, localhost only)."""
+"""Run the server: python -m coolpilot  (waitress, localhost only)."""
 from waitress import serve
 
 from .app import create_app

@@ -51,8 +51,8 @@ export type DiagLog = { name: string; test: string; lines: number; marks: number
 export type Boot = { index: number; boot_id: string; start: number; end: number; ending: 'running' | 'clean' | 'crash' | 'unknown'; minutes: number }
 
 const token =
-  document.querySelector<HTMLMetaElement>('meta[name="tuf-token"]')?.content ||
-  (import.meta.env.VITE_TUF_TOKEN as string | undefined) ||
+  document.querySelector<HTMLMetaElement>('meta[name="coolpilot-token"]')?.content ||
+  (import.meta.env.VITE_COOLPILOT_TOKEN as string | undefined) ||
   ''
 
 export class ApiError extends Error {}
@@ -60,7 +60,7 @@ export class ApiError extends Error {}
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
-    headers: { 'X-TUF-Token': token, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { 'X-CoolPilot-Token': token, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   const data = await res.json().catch(() => ({}))

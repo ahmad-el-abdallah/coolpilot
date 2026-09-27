@@ -1,6 +1,6 @@
 """Named profiles = a set of setting values (+ optional fan curves).
 
-Stored in $TUF_CONFIG_DIR/profiles.json (default /etc/tuf-control). Built-in
+Stored in $COOLPILOT_CONFIG_DIR/profiles.json (default /etc/coolpilot). Built-in
 profiles live in code and can't be deleted. The value DEFAULT means "the
 hardware/firmware default for this setting".
 """
@@ -14,7 +14,7 @@ import time
 
 from .hw import fans, sysfs
 
-CONFIG_DIR = os.environ.get("TUF_CONFIG_DIR", "/etc/tuf-control")
+CONFIG_DIR = os.environ.get("COOLPILOT_CONFIG_DIR", "/etc/coolpilot")
 DEFAULT = "__default__"
 MIN = "__min__"  # the lowest value the firmware allows right now (differs on battery vs charger)
 BEFORE_STABILITY = "_before_stability"
@@ -26,9 +26,9 @@ APPLY_ORDER = ["platform_profile", "cpu_boost", "cpu_max_mhz", "cpu_min_mhz", "e
                "charge_limit", "panel_overdrive", "kbd_backlight", "screen_brightness"]
 
 BUILTIN: dict[str, dict] = {
-    # settings/fans are built from the user's Stability page config (tuf/stability.py)
+    # settings/fans are built from the user's Stability page config (coolpilot/stability.py)
     "Stability": {
-        "description": "Workaround for the freeze fault: cool, low power, no boost. Use until the board is repaired.",
+        "description": "Cool and steady: low power, no boost. Helps laptops that freeze or reset under load.",
         "settings": {},
     },
     "Quiet": {

@@ -17,10 +17,10 @@ import subprocess
 import threading
 import time
 
-USER = os.environ.get("TUF_USER") or os.environ.get("SUDO_USER") or pwd.getpwuid(os.getuid()).pw_name
+USER = os.environ.get("COOLPILOT_USER") or os.environ.get("SUDO_USER") or pwd.getpwuid(os.getuid()).pw_name
 _pw = pwd.getpwnam(USER)
 HOME = _pw.pw_dir
-DIAG_DIR = os.environ.get("TUF_DIAG_DIR") or os.path.join(HOME, "crashdiag")
+DIAG_DIR = os.environ.get("COOLPILOT_DIAG_DIR") or os.path.join(HOME, "crashdiag")
 SCRIPT = os.path.join(DIAG_DIR, "crashdiag.sh")
 LOGS = os.path.join(DIAG_DIR, "logs")
 
@@ -79,7 +79,7 @@ def session_env() -> dict[str, str]:
             env["DISPLAY"] = ":" + os.path.basename(xs[0])[1:]
     if "DBUS_SESSION_BUS_ADDRESS" not in env and os.path.exists(f"{runtime}/bus"):
         env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={runtime}/bus"
-    for var, override in (("DISPLAY", "TUF_DISPLAY"), ("WAYLAND_DISPLAY", "TUF_WAYLAND_DISPLAY")):
+    for var, override in (("DISPLAY", "COOLPILOT_DISPLAY"), ("WAYLAND_DISPLAY", "COOLPILOT_WAYLAND_DISPLAY")):
         if os.environ.get(override):
             env[var] = os.environ[override]
     return env
