@@ -39,7 +39,7 @@ export type FansState = {
 
 export type Profile = {
   name: string; builtin: boolean; description?: string; boot: boolean; active: boolean
-  settings: Record<string, unknown>; fans?: unknown
+  settings: Record<string, unknown>; fans?: unknown; fans_preset?: string
 }
 export type ProfilesState = { profiles: Profile[]; config: { boot_profile?: string | null; active_profile?: string | null; stability_on?: boolean } }
 

@@ -820,6 +820,9 @@ def test_cli_end_to_end_against_a_live_server(monkeypatch, capsys):
         assert read(f"{BAT}/charge_control_end_threshold") == "100"
         assert cli.cmd(["fans", "stability"]) == 0
         assert read("sys/class/hwmon/hwmon9/pwm1_enable") == "1"
+        assert cli.cmd(["gaming"]) == 0
+        assert read("sys/firmware/acpi/platform_profile") == "performance"
+        assert cli.cmd(["stability", "on"]) == 0
         capsys.readouterr()
         assert cli.cmd(["bar"]) == 0
         assert '"class": ["active"]' in capsys.readouterr().out
@@ -834,3 +837,40 @@ def test_cli_end_to_end_against_a_live_server(monkeypatch, capsys):
     monkeypatch.setattr(cli, "BASE", "http://127.0.0.1:1")                # nothing listening
     capsys.readouterr()
     assert cli.cmd(["bar"]) == 0 and '"class": "error"' in capsys.readouterr().out
+
+
+# ----------------------------------------------------------------- Gaming mode + charger-aware factory defaults
+def test_gaming_mode_uses_the_highest_allowed_limits(client):
+    from coolpilot.hw import fans
+    client.post("/api/stability", json={"enabled": True})
+    res = client.post("/api/profiles/Gaming/apply").get_json()["results"]
+    assert read("sys/firmware/acpi/platform_profile") == "performance"
+    assert read("sys/devices/system/cpu/cpu0/cpufreq/boost") == "1"
+    assert read(f"{ARM}/ppt_pl1_spl/current_value") == "80" and res["ppt_pl1"] == "ok"
+    assert read(f"{ARM}/nv_dynamic_boost/current_value") == "25"
+    assert read(f"{ARM}/nv_temp_target/current_value") == "87"
+    assert read("sys/class/hwmon/hwmon9/pwm1_enable") == "1"
+    assert read("sys/class/hwmon/hwmon9/pwm1_auto_point1_pwm") == str(fans.PRESETS["cool"][0][1])
+    assert client.get("/api/stability").get_json()["on"] is False       # Gaming ends Stability mode
+
+
+def test_gaming_mode_on_battery(client):
+    from coolpilot import profiles
+    _on_battery_limits()
+    res = client.post("/api/profiles/Gaming/apply").get_json()["results"]
+    assert read(f"{ARM}/ppt_pl1_spl/current_value") == "65"               # battery maximum
+    assert res["gpu_dynamic_boost"].startswith("skipped")               # locked to 0 W on battery
+    assert all(profiles.is_ok(v) for v in res.values()), res
+
+
+def test_factory_defaults_follow_the_charger(client):
+    from conftest import w
+    from coolpilot import profiles
+    client.post("/api/reset", json={})                                   # on battery in the fake tree
+    assert read("sys/firmware/acpi/platform_profile") == "balanced"
+    w("sys/class/power_supply/ACAD/online", 1)                           # plug in
+    profiles.apply_boot(reapply=True)                                    # what the udev rule triggers
+    assert read("sys/firmware/acpi/platform_profile") == "performance"
+    w("sys/class/power_supply/ACAD/online", 0)                           # unplug
+    profiles.apply_boot(reapply=True)
+    assert read("sys/firmware/acpi/platform_profile") == "balanced"

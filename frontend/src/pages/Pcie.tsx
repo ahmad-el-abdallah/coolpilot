@@ -91,7 +91,9 @@ export function Pcie() {
           </>
         ) : (
           <div className="row wrap">
-            <label className="inline">Keep GPU busy (glmark2) <Toggle checked={load} onChange={setLoad} /></label>
+            <label className="inline" title="Only while a test runs: without load the GPU sleeps and its link switches off, so there is nothing to measure">
+              Keep GPU busy during the test (glmark2) <Toggle checked={load} onChange={setLoad} />
+            </label>
             <label className="inline">Minutes
               <input type="number" min={1} max={240} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} style={{ width: 70 }} />
             </label>
@@ -103,7 +105,7 @@ export function Pcie() {
             >
               Start watching
             </Button>
-            <span className="muted">Without load the GPU may sleep and the link switches off, so nothing is measured.</span>
+            <span className="muted">This switch only matters while a test runs — nothing loads the GPU until you press Start, and the load stops with the test.</span>
           </div>
         )}
       </Card>

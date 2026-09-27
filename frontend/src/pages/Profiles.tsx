@@ -26,6 +26,8 @@ export function Profiles() {
   const label = (k: string, v: unknown) => {
     const s = byKey[k]
     if (v === '__default__') return `${s?.label ?? k}: default`
+    if (v === '__max__') return `${s?.label ?? k}: highest allowed`
+    if (v === '__min__') return `${s?.label ?? k}: lowest allowed`
     if (s?.unit === 'MHz') return `${s.label}: ${(Number(v) / 1000).toFixed(1)} GHz`
     if (typeof v === 'boolean') return `${s?.label ?? k}: ${v ? 'on' : 'off'}`
     return `${s?.label ?? k}: ${v}${s?.unit ? ' ' + s.unit : ''}`
@@ -58,6 +60,7 @@ export function Profiles() {
             <ul className="profile-values">
               {Object.entries(p.settings ?? {}).slice(0, 8).map(([k, v]) => <li key={k}>{label(k, v)}</li>)}
               {p.fans ? <li>Fan curves: {p.fans === 'reset' ? 'factory' : 'saved'}</li> : null}
+              {p.fans_preset ? <li>Fan curves: {p.fans_preset} preset</li> : null}
             </ul>
             <div className="row wrap">
               <Button kind="primary" onClick={() => run(() => api.post(`/profiles/${encodeURIComponent(p.name)}/apply`), `${p.name} applied`)}>Apply</Button>

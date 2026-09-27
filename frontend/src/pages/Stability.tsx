@@ -222,13 +222,15 @@ export function Stability() {
   const toast = useToast()
   const [busy, setBusy] = useState(false)
 
-  const run = async (fn: () => Promise<StabilityResult | StabilityState>, done: string) => {
+  const labels = Object.fromEntries(Object.entries(INFO).map(([k, v]) => [k, v.title]))
+  /** `only`: the settings this action is about - notes about anything else are left out. */
+  const run = async (fn: () => Promise<StabilityResult | StabilityState>, done: string, only?: string[]) => {
     setBusy(true)
     try {
       const r = await fn()
       if ('state' in r) {
         setData(r.state)
-        const { failed, notes } = summarize(r.results)
+        const { failed, notes } = summarize(r.results, { only, labels })
         if (failed.length) toast('error', `Some settings failed: ${failed.join('; ')}`)
         else toast('ok', notes.length ? `${done} (${notes.join('; ')})` : done)
       } else {
@@ -245,7 +247,7 @@ export function Stability() {
   }
   const patch = (key: string, p: { enabled?: boolean; value?: unknown }) =>
     run(() => api.post<StabilityResult>('/stability/config', { items: { [key]: p } }),
-      st?.on ? 'Saved and applied' : 'Saved — applies when Stability mode is on')
+      st?.on ? 'Saved and applied' : 'Saved — applies when Stability mode is on', [key])
 
   if (!st) return <div className="page"><Card><p className="muted">Loading…</p></Card></div>
 
@@ -253,7 +255,8 @@ export function Stability() {
   const level = st.total_count ? st.enabled_count / st.total_count : 0
   const pickSection = (id: string, title: string, mode: 'default' | 'stability') =>
     run(() => api.post<StabilityResult>('/stability/section', { section: id, mode }),
-      mode === 'default' ? `${title}: factory settings restored` : `${title}: ${st.on ? 'Stability settings applied' : 'part of Stability mode'}`)
+      mode === 'default' ? `${title}: factory settings restored` : `${title}: ${st.on ? 'Stability settings applied' : 'part of Stability mode'}`,
+      st.sections.find((x) => x.id === id)?.keys ?? [])
 
   const section = (sec: StabilityState['sections'][number]): ReactNode => {
     const items = st.items.filter((i) => sec.keys.includes(i.key))
@@ -271,7 +274,7 @@ export function Stability() {
         />
         {items.map((i) => (
           <Row key={i.key} item={i} on={st.on} busy={busy} onPatch={(p) => patch(i.key, p)}
-            onReset={() => run(() => api.post<StabilityResult>('/stability/reset', { key: i.key }), `${INFO[i.key].title} reset`)} />
+            onReset={() => run(() => api.post<StabilityResult>('/stability/reset', { key: i.key }), `${INFO[i.key].title} reset`, [i.key])} />
         ))}
       </Card>
     )
@@ -355,9 +358,9 @@ export function Stability() {
             <div className="row wrap">
               <span className="muted">Stability curve:</span>
               <Segmented value={st.fans.preset} options={Object.keys(st.fans.presets)} disabled={busy || !st.fans.enabled}
-                onChange={(v) => run(() => api.post<StabilityResult>('/stability/config', { fans: { preset: v } }), `Fan curve: ${v}`)} />
+                onChange={(v) => run(() => api.post<StabilityResult>('/stability/config', { fans: { preset: v } }), `Fan curve: ${v}`, [])} />
               {st.fans.preset !== st.fans.recommended.preset && (
-                <button type="button" className="link" onClick={() => run(() => api.post<StabilityResult>('/stability/reset', { key: 'fans' }), 'Fan option reset')}>reset</button>
+                <button type="button" className="link" onClick={() => run(() => api.post<StabilityResult>('/stability/reset', { key: 'fans' }), 'Fan option reset', [])}>reset</button>
               )}
             </div>
             <FanCurveEditor points={st.fans.presets[st.fans.preset]} onChange={() => {}} currentTemp={now?.cpu.temp} disabled />

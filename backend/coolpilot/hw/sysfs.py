@@ -258,7 +258,8 @@ SETTINGS: dict[str, Setting] = {s.key: s for s in [
         choices=lambda: (read("sys/firmware/acpi/platform_profile_choices") or "").split(),
         help="ASUS fan/power mode. Silent = cooler and slower. Same as Fn+F5.",
         keywords=["silent", "quiet", "low-power", "balanced", "performance", "turbo", "fn f5", "mode", "fan"],
-        default=lambda: "balanced"),
+        # factory behaviour: Turbo on the charger, Balanced on battery
+        default=lambda: "performance" if on_ac() else "balanced"),
     Setting(
         key="epp", label="CPU energy preference", group="cpu", kind="choice",
         paths=lambda: cpu_policies("energy_performance_preference"),

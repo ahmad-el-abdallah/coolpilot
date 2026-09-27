@@ -28,7 +28,7 @@ cool and steady to reduce freezes until it is repaired.
 | **Fans** | Fan mode buttons: **Default** (factory) or **Stability** (steady, never-stop curve). Drag-and-drop 8-point curve editor per fan. The choice sticks across reboot, sleep and mode changes. |
 | **GPU** | NVIDIA Dynamic Boost and temperature target, live GPU stats (doesn't wake a sleeping GPU). |
 | **Battery & Display** | Charge limit (e.g. 80%), battery health, screen brightness, keyboard backlight, panel overdrive. |
-| **Profiles** | Save everything as a named profile, apply it, or set one to apply at every boot. |
+| **Profiles** | Built-in Stability, Quiet, Balanced, Performance, **Gaming** (Turbo, full boost, highest power limits the firmware allows, maximum GPU boost, cooler fan curve) and **Factory defaults** (Balanced on battery, Turbo on the charger, switching by itself). Save your own, apply them, or set one to apply at every boot. |
 | **History & black box** | An always-on recorder writes temperatures, load, fans, power and GPU link errors to disk every 2 s. After a freeze or reset you see **what the laptop was doing in its last 2 minutes**, plus charts over 6 hours to 90 days with crash markers and Stability-mode periods. |
 | **Repair report** | One document for the service center: device & serial, warranty, your symptom description, crash timeline with black-box readings, PCIe link errors, CPU machine-check errors and stress-test results. Print / save as PDF or download as HTML. Sessions you powered off on purpose can be left out. |
 | **Crash diagnostics** | Run CPU / RAM / GPU / SSD / idle stress tests while logging sensors to disk every 0.5 s (the log survives a freeze), mark which area of the laptop you're pressing, read the crash report, see which past sessions ended in a crash. |
@@ -157,6 +157,7 @@ coolpilot stability on|off|toggle
 coolpilot mode silent|balanced|turbo|next
 coolpilot fans default|stability
 coolpilot profile [name]         # list profiles, or apply one
+coolpilot gaming                 # Gaming mode: best performance
 coolpilot charge full|cancel|80  # "charge to 100% once", or set the limit
 coolpilot bar                    # one-line JSON for status bars
 ```

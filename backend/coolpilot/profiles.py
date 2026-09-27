@@ -17,6 +17,7 @@ from .hw import fans, sysfs
 CONFIG_DIR = os.environ.get("COOLPILOT_CONFIG_DIR", "/etc/coolpilot")
 DEFAULT = "__default__"
 MIN = "__min__"  # the lowest value the firmware allows right now (differs on battery vs charger)
+MAX = "__max__"  # the highest value the firmware allows right now
 BEFORE_STABILITY = "_before_stability"
 
 # order matters: the platform profile makes firmware reload power limits, fan
@@ -47,8 +48,18 @@ BUILTIN: dict[str, dict] = {
                      "cpu_max_mhz": DEFAULT, "ppt_pl1": DEFAULT, "ppt_pl2": DEFAULT,
                      "ppt_pl3": DEFAULT, "gpu_dynamic_boost": DEFAULT, "gpu_temp_target": DEFAULT},
     },
+    "Gaming": {
+        "description": "Best performance: Turbo mode, full CPU boost and speed, the highest power limits the "
+                       "firmware allows, maximum GPU boost and a cooler fan curve. Loud and hot - keep the laptop "
+                       "still on a desk, especially if it has freezing problems.",
+        "settings": {"platform_profile": "performance", "epp": "performance", "cpu_boost": True,
+                     "cpu_max_mhz": DEFAULT, "cpu_min_mhz": DEFAULT, "ppt_pl1": MAX, "ppt_pl2": MAX,
+                     "ppt_pl3": MAX, "gpu_dynamic_boost": MAX, "gpu_temp_target": MAX},
+        "fans_preset": "cool",
+    },
     "Factory defaults": {
-        "description": "Undo everything: firmware defaults, full frequency range, automatic fans, 100% charge.",
+        "description": "Undo everything, like the first boot: Balanced on battery and Turbo on the charger (switches "
+                       "by itself when you plug in), firmware power limits, full CPU speed, automatic fans, 100% charge.",
         "settings": {k: DEFAULT for k in ["platform_profile", "epp", "cpu_boost", "cpu_max_mhz",
                                           "cpu_min_mhz", "ppt_pl1", "ppt_pl2", "ppt_pl3",
                                           "gpu_dynamic_boost", "gpu_temp_target", "charge_limit"]},
@@ -200,10 +211,11 @@ def resolve(key: str, value):
             value = alt
     if s.kind == "int":
         lo, hi = (s.min() if s.min else None), (s.max() if s.max else None)
-        if value == MIN:
-            value = lo
+        if value in (MIN, MAX):
+            bound = "minimum" if value == MIN else "maximum"
+            value = lo if value == MIN else hi
             if value is None:
-                raise Skip("no minimum")
+                raise Skip(f"no {bound}")
         if lo is not None and hi is not None and lo == hi:
             # pinned by firmware: nothing to write (writing can even fail with EINVAL)
             raise Skip(f"fixed at {lo}{s.unit} by firmware {_power_source()}")
@@ -298,6 +310,8 @@ def apply(name: str) -> dict:
         raise ValueError("no such profile")
     # a profile's fans become the fan mode, so they stick like the Fans page choice
     spec = prof.get("fans")
+    if prof.get("fans_preset") in fans.PRESETS:
+        spec = {str(n): {"custom": True, "points": fans.PRESETS[prof["fans_preset"]]} for n in fans.FANS}
     if spec == "reset":
         update_config(fan_mode="default", fan_custom=None)
     elif spec:
@@ -349,8 +363,10 @@ def factory_reset(delete_profiles: bool = False) -> dict:
         pass
     profs = {} if delete_profiles else {k: v for k, v in user_profiles().items() if not k.startswith("_")}
     _save("profiles.json", profs)
-    update_config(stability_on=False, active_profile=None, boot_profile=None,
-                  fan_mode="default", fan_custom=None)
+    # "Factory defaults" stays the active profile, so plugging in / unplugging re-applies it and
+    # the performance mode follows the charger (Turbo on AC, Balanced on battery)
+    update_config(stability_on=False, active_profile="Factory defaults", boot_profile=None,
+                  fan_mode="default", fan_custom=None, charge_full_once=None)
     results = apply_settings(BUILTIN["Factory defaults"]["settings"])
     results.update(apply_fans("reset"))
     return results

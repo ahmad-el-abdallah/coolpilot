@@ -147,13 +147,16 @@ export function Dashboard({ go }: { go: (page: string, anchor?: string) => void 
 
       <Card title="Current mode" subtitle="Quick switch — same as Fn+F5">
         <div className="quick-modes">
-          {(['Stability', 'Quiet', 'Balanced', 'Performance'] as const).map((name) => (
+          {(['Stability', 'Quiet', 'Balanced', 'Performance', 'Gaming'] as const).map((name) => (
             <Button
               key={name} kind={(name === 'Stability' ? stability : prof?.config.active_profile === name) ? 'primary' : 'default'}
+              title={name === 'Gaming' ? 'Best performance: Turbo, full boost, highest power limits, cooler fan curve' : undefined}
               onClick={async () => {
                 try {
                   await api.post(`/profiles/${encodeURIComponent(name)}/apply`)
-                  toast('ok', `${name} applied`)
+                  toast('ok', name === 'Gaming'
+                    ? `Gaming mode on${stability ? ' — Stability mode is now off' : ''}. It runs hot: keep the laptop still on a desk.`
+                    : `${name} applied`)
                   await Promise.all([refresh(), refreshProf()])
                 } catch (e) { toast('error', (e as Error).message) }
               }}
@@ -185,7 +188,7 @@ export function Dashboard({ go }: { go: (page: string, anchor?: string) => void 
         >
           <p>This puts everything back to how it was the first time you booted:</p>
           <ul className="plain-list">
-            <li><b>Power & CPU:</b> Balanced mode, CPU boost on, full speed (up to 4.55 GHz), factory power limits</li>
+            <li><b>Power & CPU:</b> Balanced on battery and Turbo on the charger (switches by itself when you plug in), CPU boost on, full speed, factory power limits</li>
             <li><b>GPU:</b> factory Dynamic Boost and temperature target</li>
             <li><b>Fans:</b> factory automatic curves (Default fan mode)</li>
             <li><b>Battery:</b> charges to 100% again</li>

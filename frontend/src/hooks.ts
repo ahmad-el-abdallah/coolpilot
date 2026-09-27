@@ -67,13 +67,16 @@ export function tempTone(t?: number | null): 'good' | 'warn' | 'bad' | undefined
 
 /** Split profile-apply results into real failures and informational notes
  *  ("ok: limited to 65W on battery", "skipped: fixed at 0W by firmware on battery"). */
-export function summarize(results: Record<string, string>) {
+export function summarize(results: Record<string, string>, opts: { only?: string[]; labels?: Record<string, string> } = {}) {
   const failed: string[] = []
   const notes: string[] = []
+  const name = (k: string) => opts.labels?.[k] ?? k
   for (const [k, v] of Object.entries(results)) {
     if (v === 'ok' || v === 'not supported') continue
-    if (v.startsWith('ok:') || v.startsWith('skipped')) notes.push(`${k} ${v.replace(/^ok: /, '').replace(/^skipped: /, '')}`)
-    else failed.push(`${k}: ${v}`)
+    if (v.startsWith('ok:') || v.startsWith('skipped')) {
+      // notes only about what this action touched (re-applies also report unrelated items)
+      if (!opts.only || opts.only.includes(k)) notes.push(`${name(k)}: ${v.replace(/^ok: /, '').replace(/^skipped: /, '')}`)
+    } else failed.push(`${name(k)}: ${v}`)
   }
   return { failed, notes }
 }

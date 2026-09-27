@@ -9,6 +9,7 @@ the service's venv without importing the rest of the app.
     coolpilot mode silent|balanced|turbo|next
     coolpilot fans default|stability
     coolpilot profile [name]           list profiles, or apply one
+    coolpilot gaming                   Gaming mode (best performance)
     coolpilot charge full|cancel|<20-100>
     coolpilot open                     open the web app
 """
@@ -168,6 +169,9 @@ def cmd(argv: list[str]) -> int:
         r = api("POST", "/fans/mode", {"mode": args[0]})
         _notify(f"Fans: {args[0]}", _problems(r.get("results")))
         return 0
+
+    if what == "gaming":
+        what, args = "profile", ["Gaming"]
 
     if what == "profile":
         profs = api("GET", "/profiles")["profiles"]

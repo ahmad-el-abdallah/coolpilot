@@ -134,8 +134,8 @@ export default function App() {
       items.push({ id, title, hint: 'Action', keywords, run: () => { fn().then(() => { toast('ok', done); refresh() }).catch((e) => toast('error', e.message)) } })
     action('a-stab-on', 'Turn Stability mode on', 'crash freeze workaround safe cool', () => api.post('/stability', { enabled: true }), 'Stability mode on')
     action('a-stab-off', 'Turn Stability mode off', 'restore normal', () => api.post('/stability', { enabled: false }), 'Stability mode off')
-    for (const p of ['Quiet', 'Balanced', 'Performance', 'Factory defaults'])
-      action(`a-prof-${p}`, `Apply ${p} profile`, `profile preset mode ${p === 'Quiet' ? 'silent' : ''} ${p === 'Performance' ? 'turbo' : ''} reset`,
+    for (const p of ['Quiet', 'Balanced', 'Performance', 'Gaming', 'Factory defaults'])
+      action(`a-prof-${p}`, `Apply ${p} profile`, `profile preset mode ${p === 'Quiet' ? 'silent' : ''} ${p === 'Performance' ? 'turbo' : ''} ${p === 'Gaming' ? 'game games fps best performance max' : ''} reset`,
         () => api.post(`/profiles/${encodeURIComponent(p)}/apply`), `${p} applied`)
     items.push({ id: 'fan-mode', title: 'Fan mode: Default / Stability', hint: 'Fans', keywords: 'fan default factory stability curve noise freeze', run: () => go('fans') })
     items.push({ id: 'factory-reset', title: 'Reset everything to default', hint: 'Dashboard', keywords: 'factory reset default first boot undo restore', run: () => go('dashboard', 'factory-reset') })
