@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/banner.png" alt="CoolPilot: a web control panel that keeps your Linux laptop cool, quiet and stable" width="100%">
+</p>
+
 # CoolPilot
 
 A local web control panel for **laptops on Linux**: power modes, CPU frequency and power
