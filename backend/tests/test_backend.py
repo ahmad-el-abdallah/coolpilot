@@ -574,7 +574,7 @@ def test_section_validation(client):
 # ----------------------------------------------------------------- device name in the nav
 def test_device_name_from_dmi(client):
     from conftest import w
-    from coolpilot.app import device_name
+    from coolpilot.hw.device import device_name
     cases = [
         ("ASUSTeK COMPUTER INC.", "ASUS TUF Gaming A15 FA507NVR_FA507NVR", "", "ASUS TUF Gaming A15 FA507NVR"),
         ("ASUSTeK COMPUTER INC.", "ROG Zephyrus G14 GA402RJ_GA402RJ", "", "ASUS ROG Zephyrus G14 GA402RJ"),
@@ -591,3 +591,135 @@ def test_device_name_from_dmi(client):
         w("sys/class/dmi/id/product_version", version)
         assert device_name() == want, (vendor, product)
     assert client.get("/api/system").get_json()["device"] == "This laptop"
+
+
+# ----------------------------------------------------------------- black box, history, repair report
+CRASH_BOOT = "a" * 32
+NOW_BOOT = "11111111222233334444555555555555"
+
+
+def _fake_boots(monkeypatch, crash_end):
+    from coolpilot import diag
+    boots = [
+        {"index": 0, "boot_id": NOW_BOOT, "start": crash_end + 60, "end": crash_end + 600, "ending": "running", "minutes": 9},
+        {"index": -1, "boot_id": CRASH_BOOT, "start": crash_end - 1800, "end": crash_end, "ending": "crash", "minutes": 30},
+        {"index": -2, "boot_id": "b" * 32, "start": crash_end - 9000, "end": crash_end - 5000, "ending": "clean", "minutes": 66},
+    ]
+    monkeypatch.setattr(diag, "crash_history", lambda limit=30: boots)
+    return boots
+
+
+def _row(ts, boot, **kw):
+    base = {"ts": ts, "boot": boot, "cpu_temp": 60.0, "cpu_mhz": 2500, "cpu_usage": 50.0, "load1": 4.0,
+            "gpu_temp": 50.0, "gpu_w": 10.0, "gpu_state": "active", "ssd_temp": 40.0, "ram_temp": 45.0,
+            "fan1": 2800, "fan2": 2700, "bat_w": 30.0, "bat_v": 15.0, "bat_pct": 80, "ac": 0,
+            "pcie_err": 100, "pcie_new": 0, "profile": "quiet", "stability": 1}
+    base.update(kw)
+    return base
+
+
+def test_blackbox_sample_reads_the_machine(client):
+    from conftest import w
+    from coolpilot import blackbox
+    sampler = blackbox.Sampler()
+    s = sampler.sample()
+    assert s["boot"] == NOW_BOOT and s["cpu_temp"] == 55.0
+    assert s["fan1"] == 2800 and s["bat_w"] == 20.0 and s["ac"] == 0
+    assert s["pcie_err"] == 0 and s["pcie_new"] == 0 and s["profile"] == "balanced" and s["stability"] == 0
+    w("sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/aer_dev_correctable", "BadTLP 7\nTOTAL_ERR_COR 7")
+    assert sampler.sample()["pcie_new"] == 7
+    con = blackbox.connect()
+    blackbox.record(con, s)
+    assert con.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 1
+
+
+def test_blackbox_keeps_last_two_minutes_of_a_crash(client, monkeypatch):
+    import time
+    from coolpilot import blackbox
+    end = time.time() - 3600
+    _fake_boots(monkeypatch, end)
+    con = blackbox.connect()
+    for i in range(300):  # 10 minutes of the crashed session, every 2 s, getting hotter
+        blackbox.record(con, _row(end - 600 + i * 2, CRASH_BOOT, cpu_temp=60 + i * 0.1, pcie_err=100 + i))
+    assert blackbox.capture_crashes(con) == 1
+    assert blackbox.capture_crashes(con) == 0          # only once per crash
+    d = client.get(f"/api/blackbox/crashes/{CRASH_BOOT}").get_json()
+    assert 55 <= len(d["samples"]) <= 62                # the last CRASH_WINDOW seconds
+    assert d["summary"]["cpu_temp_max"] == round(60 + 299 * 0.1, 1)
+    assert d["summary"]["pcie_err_delta"] > 50 and d["summary"]["stability"] is True
+    ev = client.get("/api/blackbox/crashes").get_json()["crashes"]
+    assert len(ev) == 1 and ev[0]["recorded"] and ev[0]["boot"] == CRASH_BOOT
+    assert client.get("/api/blackbox/crashes/" + "c" * 32).status_code == 404
+    assert client.get("/api/blackbox/crashes/../../etc").status_code in (404, 405)
+
+
+def test_history_rollup_buckets_and_crash_markers(client, monkeypatch):
+    import time
+    from coolpilot import blackbox
+    now = time.time() // 60 * 60
+    _fake_boots(monkeypatch, now - 1200)
+    con = blackbox.connect()
+    for i in range(600):  # 20 minutes
+        blackbox.record(con, _row(now - 1200 + i * 2, NOW_BOOT, cpu_temp=50 + (i % 30), pcie_err=i // 10,
+                                  pcie_new=1 if i and i % 10 == 0 else 0))
+    blackbox.rollup(con, until=now)
+    assert con.execute("SELECT COUNT(*) FROM minutes").fetchone()[0] == 20
+    h = client.get("/api/history?range=6h").get_json()
+    assert h["bucket"] == 60 and len(h["points"]) == 20
+    p = h["points"][0]
+    assert p["cpu_max"] == 79.0 and 60 < p["cpu"] < 70 and p["stab"] == 1
+    # every error counted, including the ones between two minutes: 59 increments in 600 readings
+    assert [q["pcie"] for q in h["points"][:2]] == [2, 3] and sum(q["pcie"] for q in h["points"]) == 59
+    assert [c["boot"] for c in h["crashes"]] == [CRASH_BOOT]
+    assert client.get("/api/history?range=1y").status_code == 400
+
+
+def test_blackbox_prune_and_toggle(client):
+    import time
+    from coolpilot import blackbox
+    con = blackbox.connect()
+    blackbox.record(con, _row(time.time() - 10 * 86400, NOW_BOOT))
+    blackbox.record(con, _row(time.time(), NOW_BOOT))
+    blackbox.prune(con)
+    assert con.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 1
+    assert client.post("/api/blackbox", json={"enabled": False}).get_json()["enabled"] is False
+    assert client.get("/api/blackbox").get_json()["samples"] == 1
+    assert client.post("/api/blackbox/seen", json={"boot": "nope"}).status_code == 400
+    assert client.post("/api/blackbox/seen", json={"boot": CRASH_BOOT}).get_json()["seen"] == CRASH_BOOT
+
+
+def test_repair_report(client, monkeypatch):
+    import os
+    import time
+    from coolpilot import blackbox, diag
+    end = time.time() - 3600
+    _fake_boots(monkeypatch, end)
+    con = blackbox.connect()
+    for i in range(60):
+        blackbox.record(con, _row(end - 120 + i * 2, CRASH_BOOT))
+    blackbox.capture_crashes(con)
+    # a crash-test log that ended when the session crashed
+    os.makedirs(diag.LOGS, exist_ok=True)
+    start = time.localtime(end - 300)
+    name = time.strftime("%Y%m%d-%H%M%S", start) + "-ram.log"
+    with open(os.path.join(diag.LOGS, name), "w") as f:
+        f.write("header\n" + time.strftime("%H:%M:%S", time.localtime(end - 5)) + ".0 ram 60\n")
+    client.post("/api/report/symptoms", json={"symptoms": "Freezes when lifted under load."})
+    r = client.get("/api/report").get_json()
+    assert r["device"]["name"] == "ASUS TUF Gaming A15 FA507NVR" and r["device"]["serial"] == "TESTSERIAL123"
+    assert r["symptoms"] == "Freezes when lifted under load."
+    assert r["summary"]["crashes"] == 1 and r["summary"]["sessions"] == 2 and r["summary"]["recorded_crashes"] == 1
+    assert r["crashes"][0]["summary"]["cpu_temp_max"] == 60.0
+    assert r["pcie"]["gpu_link"]["bdf"] == "0000:01:00.0"
+    assert [t["result"] for t in r["tests"]] == ["crashed"]
+    assert r["machine_checks"]["checked"] is False       # no journalctl in the test sandbox
+    # the owner can mark a session as an intentional power-off: it stops counting as a crash
+    assert client.post("/api/report/exclude", json={"boot": "x"}).status_code == 400
+    client.post("/api/report/exclude", json={"boot": CRASH_BOOT, "excluded": True})
+    r = client.get("/api/report?days=14").get_json()
+    assert r["summary"]["crashes"] == 0 and r["summary"]["excluded"] == 1 and r["crashes"] == []
+    assert [t["result"] for t in r["tests"]] != ["crashed"]
+    client.post("/api/report/exclude", json={"boot": CRASH_BOOT, "excluded": False})
+    assert client.get("/api/report?days=14").get_json()["summary"]["crashes"] == 1
+    assert client.get("/api/report?days=7").status_code == 400
+    os.remove(os.path.join(diag.LOGS, name))

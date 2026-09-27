@@ -8,6 +8,8 @@ Environment=COOLPILOT_USER=@USER@
 Environment=COOLPILOT_DIST=/opt/coolpilot/frontend/dist
 Environment=PYTHONUNBUFFERED=1
 WorkingDirectory=/opt/coolpilot/backend
+# black box recordings + history: /var/lib/coolpilot
+StateDirectory=coolpilot
 ExecStart=/opt/coolpilot/venv/bin/python -m coolpilot
 Restart=on-failure
 RestartSec=3

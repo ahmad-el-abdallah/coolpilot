@@ -29,6 +29,8 @@ cool and steady to reduce freezes until it is repaired.
 | **GPU** | NVIDIA Dynamic Boost and temperature target, live GPU stats (doesn't wake a sleeping GPU). |
 | **Battery & Display** | Charge limit (e.g. 80%), battery health, screen brightness, keyboard backlight, panel overdrive. |
 | **Profiles** | Save everything as a named profile, apply it, or set one to apply at every boot. |
+| **History & black box** | An always-on recorder writes temperatures, load, fans, power and GPU link errors to disk every 2 s. After a freeze or reset you see **what the laptop was doing in its last 2 minutes**, plus charts over 6 hours to 90 days with crash markers and Stability-mode periods. |
+| **Repair report** | One document for the service center: device & serial, warranty, your symptom description, crash timeline with black-box readings, PCIe link errors, CPU machine-check errors and stress-test results. Print / save as PDF or download as HTML. Sessions you powered off on purpose can be left out. |
 | **Crash diagnostics** | Run CPU / RAM / GPU / SSD / idle stress tests while logging sensors to disk every 0.5 s (the log survives a freeze), mark which area of the laptop you're pressing, read the crash report, see which past sessions ended in a crash. |
 | **PCIe link health** | Error counters for every PCIe link and a live "press test" for the CPU ↔ GPU link: press areas of the laptop and see if corrected errors jump. |
 | **System** | Model, serial, BIOS, kernel, and your warranty info (entered by you, stored locally). |
@@ -195,6 +197,9 @@ Everything is plain Linux sysfs — no vendor tools required:
 | PCIe errors | `/sys/bus/pci/devices/*/aer_dev_{correctable,nonfatal,fatal}` |
 
 Saved state lives in `/etc/coolpilot/` (`config.json`, `profiles.json`, `stability.json`, `token`).
+Black-box recordings and history live in `/var/lib/coolpilot/blackbox.db` (SQLite, every reading
+committed with `synchronous=FULL`): raw 2-second readings for 3 days, per-minute history for a year,
+and the last 2 minutes before every crash forever — a few MB in total.
 
 ### Project layout
 
@@ -207,6 +212,8 @@ backend/            Flask API (Python)
   coolpilot/stability.py    configurable Stability mode
   coolpilot/fanmode.py      Default / Stability / Custom fan mode that sticks
   coolpilot/diag.py         crash tests + crash history
+  coolpilot/blackbox.py     always-on recorder, history store, crash capture
+  coolpilot/report.py       repair report
   tests/              pytest suite against a fake sysfs tree
 frontend/           React + TypeScript + Vite UI
 crashdiag/          standalone crash-test and PCIe-watch scripts

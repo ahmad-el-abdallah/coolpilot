@@ -7,9 +7,11 @@ import { Dashboard } from './pages/Dashboard'
 import { Diagnostics } from './pages/Diagnostics'
 import { Fans } from './pages/Fans'
 import { Gpu } from './pages/Gpu'
+import { History } from './pages/History'
 import { Pcie } from './pages/Pcie'
 import { Power } from './pages/Power'
 import { Profiles } from './pages/Profiles'
+import { Report } from './pages/Report'
 import { Stability } from './pages/Stability'
 import { System } from './pages/System'
 
@@ -28,6 +30,8 @@ const PAGES = [
   { id: 'gpu', label: 'GPU', icon: '▣', keywords: 'nvidia rtx graphics' },
   { id: 'battery', label: 'Battery & Display', icon: '▭', keywords: 'charge limit brightness keyboard backlight screen' },
   { id: 'profiles', label: 'Profiles', icon: '☰', keywords: 'save preset boot startup' },
+  { id: 'history', label: 'History & black box', icon: '◷', keywords: 'history chart graph black box recorder crash timeline temperature over time' },
+  { id: 'report', label: 'Repair report', icon: '▤', keywords: 'repair report warranty service center pdf print export evidence' },
   { id: 'diagnostics', label: 'Crash diagnostics', icon: '⚠', keywords: 'crash freeze test stress log report history' },
   { id: 'pcie', label: 'PCIe link health', icon: '⇄', keywords: 'pcie gpu link errors aer badtlp lanes solder balls bga press test watch' },
   { id: 'system', label: 'System & warranty', icon: 'ⓘ', keywords: 'serial bios warranty info model' },
@@ -56,13 +60,16 @@ export default function App() {
     setPage(p as PageId)
     setNavOpen(false)
     if (anchor) {
-      setTimeout(() => {
+      // the target may only appear once the page has loaded its data - keep looking for a few seconds
+      let tries = 0
+      const find = () => {
         const el = document.getElementById(anchor)
-        if (!el) return
+        if (!el) { if (++tries < 25) setTimeout(find, 150); return }
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
         el.classList.add('flash')
         setTimeout(() => el.classList.remove('flash'), 1600)
-      }, 120)
+      }
+      setTimeout(find, 120)
     } else window.scrollTo({ top: 0 })
   }, [])
 
@@ -134,6 +141,8 @@ export default function App() {
     items.push({ id: 'factory-reset', title: 'Reset everything to default', hint: 'Dashboard', keywords: 'factory reset default first boot undo restore', run: () => go('dashboard', 'factory-reset') })
     items.push({ id: 'fan-1', title: 'CPU fan curve', hint: 'Fans', keywords: 'fan curve noise rpm', run: () => go('fans', 'fan-1') })
     items.push({ id: 'fan-2', title: 'GPU fan curve', hint: 'Fans', keywords: 'fan curve noise rpm', run: () => go('fans', 'fan-2') })
+    items.push({ id: 'last-crash', title: 'What happened in the last crash', hint: 'History', keywords: 'black box freeze crash reset recording', run: () => go('history') })
+    items.push({ id: 'repair-report', title: 'Make a repair report (PDF)', hint: 'Repair report', keywords: 'asus warranty service center print pdf', run: () => go('report') })
     items.push({ id: 'crash-test', title: 'Run a crash test', hint: 'Diagnostics', keywords: 'stress test freeze cpu ram gpu', run: () => go('diagnostics') })
     items.push({ id: 'pcie-watch', title: 'GPU link press test (PCIe errors)', hint: 'PCIe link health', keywords: 'solder balls bga weak spot press pcie errors', run: () => go('pcie') })
     return items
@@ -168,6 +177,8 @@ export default function App() {
             {page === 'gpu' && <Gpu />}
             {page === 'battery' && <Battery />}
             {page === 'profiles' && <Profiles />}
+            {page === 'history' && <History />}
+            {page === 'report' && <Report />}
             {page === 'diagnostics' && <Diagnostics />}
             {page === 'pcie' && <Pcie />}
             {page === 'system' && <System />}

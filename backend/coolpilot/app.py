@@ -11,8 +11,9 @@ import time
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from . import diag, fanmode, profiles, security, stability
+from . import blackbox, diag, fanmode, profiles, report, security, stability
 from .hw import fans, gpu, pcie, sensors, sysfs
+from .hw.device import device_name
 
 DIST = os.environ.get(
     "COOLPILOT_DIST", os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
@@ -39,34 +40,6 @@ def conflicts() -> list[dict]:
         return []
     states = r.stdout.split()
     return [{"unit": u, "what": CONFLICTS[u]} for u, st in zip(CONFLICTS, states) if st == "active"]
-
-
-VENDORS = {"asustek": "ASUS", "lenovo": "Lenovo", "hewlett": "HP", "hp": "HP", "dell": "Dell",
-           "micro-star": "MSI", "acer": "Acer", "gigabyte": "Gigabyte", "razer": "Razer",
-           "samsung": "Samsung", "microsoft": "Microsoft", "framework": "Framework",
-           "tuxedo": "TUXEDO", "system76": "System76", "huawei": "Huawei", "xiaomi": "Xiaomi"}
-PLACEHOLDERS = {"", "to be filled by o.e.m.", "system product name", "system manufacturer", "default string",
-                "not applicable", "none", "system version", "0123456789"}
-
-
-def device_name() -> str:
-    """A friendly model name from DMI, e.g. "ASUS TUF Gaming A15 FA507NVR"."""
-    r = lambda f: (sysfs.read(f"sys/class/dmi/id/{f}") or "").strip()  # noqa: E731
-    vendor, product, version = r("sys_vendor"), r("product_name"), r("product_version")
-    if vendor.lower() in PLACEHOLDERS:
-        vendor = ""
-    if product.lower() in PLACEHOLDERS:
-        product = ""
-    # Lenovo: product_name is a machine type ("82JU"), the model is in product_version
-    if vendor.lower().startswith("lenovo") and version.lower() not in PLACEHOLDERS:
-        product = version
-    # ASUS repeats the model code: "... FA507NVR_FA507NVR"
-    words = [w.split("_")[0] if "_" in w and len(set(w.split("_"))) == 1 else w for w in product.split()]
-    name = " ".join(words)
-    short = next((v for k, v in VENDORS.items() if vendor.lower().startswith(k)), vendor.split(" ")[0] if vendor else "")
-    if short and not name.lower().startswith(short.lower()):
-        name = f"{short} {name}".strip()
-    return name or "This laptop"
 
 
 def _err(msg: str, code: int = 400):
@@ -358,6 +331,60 @@ def create_app(token: str | None = None) -> Flask:
     @app.get("/api/pcie/history")
     def api_pcie_history():
         return jsonify({"boots": pcie.history()})
+
+    # ------------------------------------------------------------------ black box + history
+    @app.get("/api/blackbox")
+    def api_blackbox():
+        return jsonify(blackbox.status())
+
+    @app.post("/api/blackbox")
+    def api_blackbox_toggle():
+        profiles.update_config(blackbox=bool((request.get_json(silent=True) or {}).get("enabled")))
+        return jsonify(blackbox.status())
+
+    @app.get("/api/blackbox/crashes")
+    def api_blackbox_crashes():
+        return jsonify({"crashes": blackbox.crash_events(), "seen": profiles.config().get("crash_seen")})
+
+    @app.get("/api/blackbox/crashes/<boot>")
+    def api_blackbox_crash(boot):
+        d = blackbox.crash_detail(boot) if re.fullmatch(r"[0-9a-f]{32}", boot) else None
+        return jsonify(d) if d else _err("no recording for that session", 404)
+
+    @app.post("/api/blackbox/seen")
+    def api_blackbox_seen():
+        boot = str((request.get_json(silent=True) or {}).get("boot", ""))
+        if not re.fullmatch(r"[0-9a-f]{32}", boot):
+            return _err("bad session id")
+        profiles.update_config(crash_seen=boot)
+        return jsonify({"seen": boot})
+
+    @app.get("/api/history")
+    def api_history():
+        try:
+            return jsonify(blackbox.history(request.args.get("range", "24h")))
+        except ValueError as e:
+            return _err(str(e))
+
+    # ------------------------------------------------------------------ repair report
+    @app.get("/api/report")
+    def api_report():
+        try:
+            return jsonify(report.build(int(request.args.get("days", 30))))
+        except ValueError as e:
+            return _err(str(e))
+
+    @app.post("/api/report/exclude")
+    def api_report_exclude():
+        body = request.get_json(silent=True) or {}
+        boot = str(body.get("boot", ""))
+        if not re.fullmatch(r"[0-9a-f]{32}", boot):
+            return _err("bad session id")
+        return jsonify({"excluded": report.set_excluded(boot, bool(body.get("excluded", True)))})
+
+    @app.post("/api/report/symptoms")
+    def api_report_symptoms():
+        return jsonify(report.save_symptoms((request.get_json(silent=True) or {}).get("symptoms", "")))
 
     @app.errorhandler(403)
     def _forbidden(e):

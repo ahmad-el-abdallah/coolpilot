@@ -13,6 +13,7 @@ os.environ["COOLPILOT_DIST"] = os.path.join(ROOT, "dist")
 os.environ["PATH"] = "/nonexistent"  # no powerprofilesctl / nvidia-smi / lspci / glmark2 in tests
 os.environ["COOLPILOT_DIAG_DIR"] = tempfile.mkdtemp(prefix="coolpilot-diag-")
 os.environ["COOLPILOT_PCIE_INTERVAL"] = "0.05"
+os.environ["COOLPILOT_DATA_DIR"] = tempfile.mkdtemp(prefix="coolpilot-data-")
 
 ARM = "sys/class/firmware-attributes/asus-armoury/attributes"
 
@@ -86,6 +87,13 @@ def build():
         os.makedirs(os.path.dirname(link), exist_ok=True)
         if not os.path.islink(link):
             os.symlink(os.path.join(ROOT, d), link)
+    w("proc/sys/kernel/random/boot_id", "11111111-2222-3333-4444-555555555555")
+    w("sys/class/dmi/id/sys_vendor", "ASUSTeK COMPUTER INC.")
+    w("sys/class/dmi/id/product_name", "ASUS TUF Gaming A15 FA507NVR_FA507NVR")
+    w("sys/class/dmi/id/product_serial", "TESTSERIAL123")
+    w("sys/class/hwmon/hwmon7/name", "asus")
+    w("sys/class/hwmon/hwmon7/fan1_input", 2800)
+    w("sys/class/hwmon/hwmon7/fan2_input", 2700)
     w("proc/stat", "cpu  100 0 100 800 0 0 0 0 0 0")
     w("proc/loadavg", "0.5 0.4 0.3 1/100 1")
     w("proc/meminfo", "MemTotal: 16000000 kB\nMemAvailable: 8000000 kB")
@@ -97,6 +105,9 @@ def fresh_tree():
     for f in os.listdir(CONF):
         if f != "token":
             os.remove(os.path.join(CONF, f))
+    data = os.environ["COOLPILOT_DATA_DIR"]
+    for f in os.listdir(data):
+        os.remove(os.path.join(data, f))
     yield
 
 

@@ -106,3 +106,29 @@ export type StabilityState = {
   enabled_count: number; total_count: number
 }
 export type StabilityResult = { results: Record<string, string>; state: StabilityState }
+
+export type HistoryPoint = {
+  t: number; cpu: number | null; cpu_max: number | null; gpu: number | null; gpu_max: number | null
+  usage: number | null; bat_w: number | null; fan: number | null; pcie: number | null
+  ac: number | null; stab: number | null; n: number
+}
+export type HistoryData = {
+  range: string; bucket: number; from: number; to: number; oldest: number | null
+  points: HistoryPoint[]; crashes: { t: number; boot: string; minutes: number }[]
+}
+export type CrashSummary = {
+  seconds?: number; last_ts?: number; gap_to_end?: number | null
+  cpu_temp_last?: number | null; cpu_temp_max?: number | null; cpu_usage_avg?: number | null; cpu_mhz_last?: number | null
+  gpu_temp_max?: number | null; gpu_state?: string | null; ssd_temp_max?: number | null; ram_temp_max?: number | null
+  bat_w_last?: number | null; ac?: boolean; profile?: string | null; stability?: boolean; pcie_err_delta?: number
+}
+export type CrashEvent = { boot: string; start: number; end: number; minutes: number; recorded: boolean; summary: CrashSummary }
+export type BlackboxSample = {
+  ts: number; cpu_temp: number | null; cpu_mhz: number | null; cpu_usage: number | null; load1: number | null
+  gpu_temp: number | null; gpu_w: number | null; fan1: number | null; fan2: number | null
+  bat_w: number | null; ac: number; pcie_err: number | null; pcie_new: number | null; stability: number
+}
+export type BlackboxStatus = {
+  enabled: boolean; interval: number; running: boolean; error: string | null; db_bytes: number
+  last: (BlackboxSample & { profile?: string }) | null; oldest: number | null; samples: number; crashes_kept: number
+}

@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import { api, type ProfilesState } from '../api'
+import { api, type CrashEvent, type ProfilesState } from '../api'
 import { Modal } from '../components/Modal'
 import { Badge, Button, Card, Sparkline, Stat } from '../components/ui'
 import { fmt, summarize, tempTone, usePoll, useSensorHistory, useSettings, useToast } from '../hooks'
 
-export function Dashboard({ go }: { go: (page: string) => void }) {
+export function Dashboard({ go }: { go: (page: string, anchor?: string) => void }) {
   const { now, history, error } = useSensorHistory()
   const { data: prof, refresh: refreshProf } = usePoll<ProfilesState>('/profiles', 5000)
   const { data: sys } = usePoll<{ conflicts: { unit: string; what: string }[] }>('/system', 60000)
+  const { data: cr, refresh: refreshCrashes } = usePoll<{ crashes: CrashEvent[]; seen: string | null }>('/blackbox/crashes', 120000)
+  const lastCrash = cr?.crashes[0]
+  const newCrash = lastCrash && lastCrash.boot !== cr?.seen && Date.now() / 1000 - lastCrash.end < 7 * 86400 ? lastCrash : null
   const { refresh } = useSettings()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
@@ -53,6 +56,19 @@ export function Dashboard({ go }: { go: (page: string) => void }) {
   return (
     <div className="page">
       {error && <div className="banner bad">Backend unreachable: {error}</div>}
+      {newCrash && (
+        <div className="banner crash-banner row wrap">
+          <span className="crash-icon" aria-hidden>⚠</span>
+          <span>
+            <b>The laptop froze or restarted</b> on {new Date(newCrash.end * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}
+            {' '}after {newCrash.minutes < 60 ? `${Math.round(newCrash.minutes)} min` : `${(newCrash.minutes / 60).toFixed(1)} h`}.
+            {newCrash.recorded ? ' The black box recorded the last 2 minutes.' : ''}
+          </span>
+          <span className="spacer" />
+          <Button kind="primary" onClick={() => go('history', `crash-${newCrash.boot}`)}>See what happened</Button>
+          <Button kind="ghost" onClick={async () => { await api.post('/blackbox/seen', { boot: newCrash.boot }).catch(() => {}); refreshCrashes() }}>Dismiss</Button>
+        </div>
+      )}
       {!!sys?.conflicts.length && (
         <div className="banner warn">
           <b>Another tool is managing the same settings</b> and may undo changes made here:
@@ -174,7 +190,7 @@ export function Dashboard({ go }: { go: (page: string) => void }) {
             <li><b>Stability mode:</b> turned off, its setup back to recommended</li>
             <li><b>Boot:</b> nothing is applied automatically at startup anymore</li>
           </ul>
-          <p className="muted">Kept: crash-test logs, screen brightness, keyboard light{deleteProfiles ? '' : ', and your saved profiles'}.</p>
+          <p className="muted">Kept: crash-test logs, black-box recordings and history, screen brightness, keyboard light{deleteProfiles ? '' : ', and your saved profiles'}.</p>
           <label className="inline check">
             <input type="checkbox" checked={deleteProfiles} onChange={(e) => setDeleteProfiles(e.target.checked)} />
             Also delete my saved profiles
