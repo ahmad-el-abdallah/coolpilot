@@ -194,15 +194,19 @@ for f in crashdiag.sh pcie-watch.sh; do
   install -m 755 -o "$USER_NAME" -g "$USER_GROUP" "$SRC/crashdiag/$f" "$USER_HOME/crashdiag/$f"
 done
 
-echo "==> App launcher entry"
+echo "==> App launcher entry + icon"
 APPS="$USER_HOME/.local/share/applications"
-runuser -u "$USER_NAME" -- mkdir -p "$APPS"
+ICONS="$USER_HOME/.local/share/icons/hicolor"
+runuser -u "$USER_NAME" -- mkdir -p "$APPS" "$ICONS/256x256/apps" "$ICONS/scalable/apps"
+install -m 644 -o "$USER_NAME" -g "$USER_GROUP" "$SRC/frontend/public/icon.png" "$ICONS/256x256/apps/coolpilot.png"
+install -m 644 -o "$USER_NAME" -g "$USER_GROUP" "$SRC/frontend/public/icon.svg" "$ICONS/scalable/apps/coolpilot.svg"
+runuser -u "$USER_NAME" -- gtk-update-icon-cache -q "$ICONS" 2>/dev/null || true
 cat > "$APPS/coolpilot.desktop" <<DESKTOP
 [Desktop Entry]
 Name=CoolPilot
 Comment=Fans, power, CPU frequency and crash diagnostics for your laptop
 Exec=xdg-open http://127.0.0.1:$PORT
-Icon=preferences-system
+Icon=coolpilot
 Terminal=false
 Type=Application
 Categories=System;Settings;

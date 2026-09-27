@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="56" fill="#f5a524"/>
+  <!-- the "C" of CoolPilot -->
+  <path d="M176 84a64 64 0 1 0 0 88" fill="none" stroke="#141414" stroke-width="30" stroke-linecap="round"/>
+</svg>
