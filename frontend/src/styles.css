@@ -25,6 +25,16 @@
 }
 
 * { box-sizing: border-box; }
+
+/* ---------------------------------------------------------------- modern scrollbars: thin, rounded, no track */
+:root { --scroll-thumb: color-mix(in srgb, var(--muted) 45%, transparent); --scroll-thumb-hover: color-mix(in srgb, var(--muted) 80%, transparent); }
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+*:hover { scrollbar-color: var(--scroll-thumb-hover) transparent; }
+/* older WebKit/Blink without the standard properties */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body { font: 14px/1.5 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
 h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -0.01em; }
@@ -45,7 +55,18 @@ kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-
 .brand > div { min-width: 0; }
 .brand small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.35; }
 .logo { width: 32px; height: 32px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 800; }
-.nav nav { display: flex; flex-direction: column; gap: 2px; }
+/* only the page list scrolls; logo + search stay put. Soft fades at the edges hint there's more. */
+.nav nav {
+  display: flex; flex-direction: column; gap: 2px;
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  margin: 0 -8px; padding: 6px 8px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 16px), transparent 100%);
+  scrollbar-color: transparent transparent;       /* hidden until you hover the menu */
+  transition: scrollbar-color .25s;
+}
+.nav nav:hover, .nav nav:focus-within { scrollbar-color: var(--scroll-thumb) transparent; }
+.nav nav a { flex: none; }
 .nav a { color: var(--muted); text-decoration: none; padding: 8px 10px; border-radius: 8px; display: flex; gap: 10px; align-items: center; }
 .nav a:hover { background: var(--panel-2); color: var(--text); }
 .nav a.active { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--text); }
