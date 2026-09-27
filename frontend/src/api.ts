@@ -98,6 +98,7 @@ export type StabilityItem = {
 }
 export type StabilityState = {
   on: boolean; boot: boolean; power_source: string; items: StabilityItem[]
+  sections: { id: string; keys: string[]; mode: 'default' | 'stability' | 'mixed' | 'unsupported' }[]
   fans: {
     enabled: boolean; preset: string; recommended: { enabled: boolean; preset: string }
     presets: Record<string, [number, number][]>; available: boolean; status: 'applied' | 'different' | null

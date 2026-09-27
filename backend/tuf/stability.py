@@ -29,6 +29,14 @@ RECOMMENDED: dict[str, object] = {
 POWER_DEPENDENT = {"ppt_pl1", "ppt_pl2", "ppt_pl3", "gpu_dynamic_boost", "gpu_temp_target"}
 FANS_RECOMMENDED = {"enabled": False, "preset": "stability"}
 FILE = "stability.json"
+# page sections; each can be switched as a whole between factory Default and Stability
+SECTIONS: dict[str, list[str]] = {
+    "heat": ["platform_profile"],
+    "cpu": ["cpu_boost", "cpu_max_mhz", "epp"],
+    "limits": ["ppt_pl1", "ppt_pl2", "ppt_pl3"],
+    "gpu": ["gpu_dynamic_boost", "gpu_temp_target"],
+    "battery": ["charge_limit"],
+}
 
 
 def _stored() -> dict:
@@ -188,6 +196,52 @@ def reset(key: str | None = None) -> dict:
     return _after_change(before)
 
 
+def set_section(section: str, mode: str) -> dict:
+    """Switch a whole page section:
+    - "default":   leave it out of Stability mode and put its factory (first-boot)
+                   values back right away;
+    - "stability": include it in Stability mode (applied now if Stability mode is on).
+    """
+    from . import fanmode
+    if mode not in ("default", "stability"):
+        raise ValueError("mode must be 'default' or 'stability'")
+    if section != "fans" and section not in SECTIONS:
+        raise ValueError(f"unknown section '{section}'")
+    include = mode == "stability"
+    stored = _stored()
+    results: dict = {}
+    if section == "fans":
+        stored.setdefault("fans", {})["enabled"] = include
+        profiles._save(FILE, stored)
+        if not include:
+            profiles.update_config(fan_mode="default", fan_custom=None)  # factory automatic fans
+            results.update(fanmode.enforce())
+        elif is_on():
+            results.update(fanmode.enforce())
+        return results
+
+    keys = SECTIONS[section]
+    for key in keys:
+        stored.setdefault("items", {}).setdefault(key, {})["enabled"] = include
+    profiles._save(FILE, stored)
+    if not include:
+        results.update(profiles.apply_settings(
+            {k: profiles.DEFAULT for k in keys if sysfs.SETTINGS[k].available()}))
+    if is_on():
+        # re-apply the included sections too: e.g. a performance-mode change
+        # makes the firmware reload its power limits
+        results.update(turn_on())
+    return results
+
+
+def _section_mode(keys: list[str], cfg: dict) -> str:
+    avail = [k for k in keys if sysfs.SETTINGS[k].available()]
+    if not avail:
+        return "unsupported"
+    enabled = [cfg["items"][k]["enabled"] for k in avail]
+    return "stability" if all(enabled) else "default" if not any(enabled) else "mixed"
+
+
 def set_boot(enabled: bool) -> None:
     cfg = profiles.config()
     if enabled:
@@ -238,8 +292,10 @@ def state() -> dict:
         want = fans.PRESETS[cfg["fans"]["preset"]]
         now = fans.read_all()["fans"]
         fan_status = "applied" if all(f["custom"] and f["points"] == want for f in now) else "different"
+    sections = [{"id": sid, "keys": keys, "mode": _section_mode(keys, cfg)} for sid, keys in SECTIONS.items()]
     return {
         "on": on,
+        "sections": sections,
         "boot": profiles.config().get("boot_profile") == "Stability",
         "power_source": profiles._power_source(),
         "items": items,

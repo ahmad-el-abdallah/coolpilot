@@ -507,3 +507,65 @@ def test_intel_cpu_temperature(client):
     w("sys/class/hwmon/hwmon3/temp1_input", 61000)
     assert client.get("/api/sensors").get_json()["cpu"]["temp"] == 61.0
     shutil.rmtree(f"{ROOT}/sys/class/hwmon/hwmon3")
+
+
+# ----------------------------------------------------------------- Stability page sections: Default / Stability
+def _section(state, sid):
+    return next(x for x in state["sections"] if x["id"] == sid)
+
+
+def test_section_default_puts_factory_values_back(client):
+    client.post("/api/stability", json={"enabled": True})
+    assert read(f"{ARM}/nv_temp_target/current_value") == "75"
+    r = client.post("/api/stability/section", json={"section": "gpu", "mode": "default"}).get_json()
+    assert read(f"{ARM}/nv_temp_target/current_value") == "87"       # factory
+    assert read(f"{ARM}/nv_dynamic_boost/current_value") == "25"     # factory
+    assert read(f"{ARM}/ppt_pl1_spl/current_value") == "35"          # other sections untouched
+    st = r["state"]
+    assert _section(st, "gpu")["mode"] == "default" and _section(st, "limits")["mode"] == "stability"
+    assert st["on"] is True
+    client.post("/api/stability", json={"enabled": False})
+    assert read(f"{ARM}/nv_temp_target/current_value") == "87"       # stays factory after turning off
+
+
+def test_section_stability_reincludes_and_applies(client):
+    client.post("/api/stability", json={"enabled": True})
+    client.post("/api/stability/section", json={"section": "cpu", "mode": "default"})
+    assert read("sys/devices/system/cpu/cpu0/cpufreq/boost") == "1"
+    assert read("sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq") == "4553000"
+    client.post("/api/stability/section", json={"section": "cpu", "mode": "stability"})
+    assert read("sys/devices/system/cpu/cpu0/cpufreq/boost") == "0"
+    assert read("sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq") == "3000000"
+
+
+def test_section_default_works_while_stability_is_off(client):
+    client.post("/api/settings/charge_limit", json={"value": 60})
+    client.post("/api/stability/section", json={"section": "battery", "mode": "default"})
+    assert read("sys/class/power_supply/BAT1/charge_control_end_threshold") == "100"
+    st = client.post("/api/stability/section", json={"section": "battery", "mode": "stability"}).get_json()["state"]
+    assert read("sys/class/power_supply/BAT1/charge_control_end_threshold") == "100"  # applies only when on
+    assert _section(st, "battery")["mode"] == "stability" and st["on"] is False
+
+
+def test_section_mixed_and_heat_default_keeps_other_limits(client):
+    client.post("/api/stability/config", json={"items": {"epp": {"enabled": False}}})
+    assert _section(client.get("/api/stability").get_json(), "cpu")["mode"] == "mixed"
+    client.post("/api/stability", json={"enabled": True})
+    client.post("/api/stability/section", json={"section": "heat", "mode": "default"})
+    assert read("sys/firmware/acpi/platform_profile") == "balanced"
+    assert read(f"{ARM}/ppt_pl1_spl/current_value") == "35"         # re-applied after the mode change
+
+
+def test_section_fans_default_and_stability(client):
+    client.post("/api/fans/mode", json={"mode": "stability"})
+    client.post("/api/stability/section", json={"section": "fans", "mode": "default"})
+    assert read("sys/class/hwmon/hwmon9/pwm1_enable") == "2"
+    assert client.get("/api/fans").get_json()["mode"] == "default"
+    client.post("/api/stability", json={"enabled": True})
+    client.post("/api/stability/section", json={"section": "fans", "mode": "stability"})
+    assert read("sys/class/hwmon/hwmon9/pwm1_enable") == "1"
+
+
+def test_section_validation(client):
+    assert client.post("/api/stability/section", json={"section": "gpu", "mode": "turbo"}).status_code == 400
+    assert client.post("/api/stability/section", json={"section": "wifi", "mode": "default"}).status_code == 400

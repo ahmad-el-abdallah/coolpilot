@@ -6,60 +6,62 @@ import { fmt, summarize, tempTone, usePoll, useSensorHistory, useSettings, useTo
 
 const MIN = '__min__'
 
-type Info = { title: string; group: string; helps: string; costs: string }
+type Info = { title: string; short: string; helps: string; costs: string }
 const INFO: Record<string, Info> = {
   platform_profile: {
-    title: 'Silent power mode', group: 'Heat & power',
+    title: 'Silent power mode', short: 'Mode',
     helps: 'Firmware lowers its power targets and runs the fans slower — the base of Stability mode.',
     costs: 'Lower sustained speed. Fans are quieter, so the laptop runs warmer under long heavy loads.',
   },
   cpu_boost: {
-    title: 'No CPU boost', group: 'CPU',
+    title: 'No CPU boost', short: 'Boost',
     helps: 'Stops sudden jumps to ~4.5 GHz — the fastest way the chip heats up and cools down again.',
     costs: 'Single-core work (opening apps, browsing, most everyday tasks) roughly 25–35% slower.',
   },
   cpu_max_mhz: {
-    title: 'CPU speed cap', group: 'CPU',
+    title: 'CPU speed cap', short: 'Max speed',
     helps: 'Hard ceiling on the CPU clock: less heat and less current through the chip.',
     costs: 'The lower the cap, the slower. Below ~2.5 GHz everyday apps start to feel sluggish.',
   },
   epp: {
-    title: 'Energy-saving CPU behaviour', group: 'CPU',
+    title: 'Energy-saving CPU behaviour', short: 'Energy pref.',
     helps: 'The CPU only raises its clock when it really has to.',
     costs: 'A small delay when opening apps or switching tasks.',
   },
   ppt_pl1: {
-    title: 'CPU sustained power', group: 'Power limits',
+    title: 'CPU sustained power', short: 'PL1',
     helps: 'Caps long-term CPU watts — the main source of heat during long jobs.',
     costs: 'Long multi-core jobs (compiling, video export, Docker builds) take longer.',
   },
   ppt_pl2: {
-    title: 'CPU burst power', group: 'Power limits',
+    title: 'CPU burst power', short: 'PL2',
     helps: 'Caps the ~2-minute bursts at the start of heavy work.',
     costs: 'Short heavy tasks finish a bit slower.',
   },
   ppt_pl3: {
-    title: 'CPU peak power', group: 'Power limits',
+    title: 'CPU peak power', short: 'PL3',
     helps: 'Caps split-second current spikes through the CPU power connections.',
     costs: 'Barely noticeable.',
   },
   gpu_dynamic_boost: {
-    title: 'GPU Dynamic Boost', group: 'GPU',
-    helps: 'Stops the RTX 4060 borrowing extra watts from the CPU budget.',
+    title: 'GPU Dynamic Boost', short: 'Dynamic Boost',
+    helps: 'Stops the NVIDIA GPU borrowing extra watts from the CPU budget.',
     costs: 'A few percent lower FPS in games. (The firmware already turns it off on battery.)',
   },
   gpu_temp_target: {
-    title: 'GPU temperature target', group: 'GPU',
+    title: 'GPU temperature target', short: 'Temp target',
     helps: 'The GPU slows itself down earlier to stay cooler.',
     costs: 'Lower FPS during long gaming sessions.',
   },
   charge_limit: {
-    title: 'Battery charge limit', group: 'Battery',
+    title: 'Battery charge limit', short: 'Charge limit',
     helps: 'Less battery wear and less heat while plugged in (see battery health on the Battery page).',
     costs: 'About 20% less runtime off the charger. Switch it off before a long day away from power.',
   },
 }
-const GROUPS = ['Heat & power', 'CPU', 'Power limits', 'GPU', 'Battery']
+const SECTION_TITLES: Record<string, string> = {
+  heat: 'Heat & power', cpu: 'CPU', limits: 'Power limits', gpu: 'GPU', battery: 'Battery',
+}
 const POWER_DEPENDENT = new Set(['ppt_pl1', 'ppt_pl2', 'ppt_pl3', 'gpu_dynamic_boost', 'gpu_temp_target'])
 const PROFILE_LABELS: Record<string, string> = { quiet: '🌙 Silent', balanced: '⚖️ Balanced', performance: '🚀 Turbo' }
 
@@ -93,7 +95,7 @@ const PRESETS: { id: string; title: string; text: string; items?: ItemPatch; fan
 
 function show(item: StabilityItem, v: unknown): string {
   const s = item.setting
-  if (v === MIN) return 'lowest allowed'
+  if (v === MIN) return item.target != null ? `lowest allowed (${show(item, item.target)})` : 'lowest allowed'
   if (typeof v === 'boolean') return v ? 'on' : 'off'
   if (s.unit === 'MHz') return `${(Number(v) / 1000).toFixed(2)} GHz`
   if (typeof v === 'number') return `${v}${s.unit ? ' ' + s.unit : ''}`
@@ -168,6 +170,7 @@ function Row({ item, on, busy, onPatch, onReset }: {
         <p><span className="plus">＋</span> {info.helps}</p>
         <p><span className="minus">－</span> {info.costs}</p>
         <div className="stab-meta">
+          {item.setting.default !== undefined && <>Factory: <b>{show(item, item.setting.default)}</b>{' · '}</>}
           Recommended: <b>{show(item, item.recommended)}</b>
           {item.customized && <button type="button" className="link" disabled={busy} onClick={onReset}>reset</button>}
           {on && item.restore != null && <span className="muted"> · turning Stability off restores {show(item, item.restore)}</span>}
@@ -176,6 +179,38 @@ function Row({ item, on, busy, onPatch, onReset }: {
       <div className="stab-control">
         <Editor item={item} disabled={busy || off} onValue={(v) => onPatch({ value: v })} />
       </div>
+    </div>
+  )
+}
+
+type Mode = 'default' | 'stability' | 'mixed' | 'unsupported'
+
+/** Two big choices at the top of a section: factory Default or Stability. */
+function SectionModes({ mode, on, busy, factory, stable, onPick }: {
+  mode: Mode; on: boolean; busy: boolean; factory: string; stable: string
+  onPick: (m: 'default' | 'stability') => void
+}) {
+  const tiles = [
+    { id: 'default' as const, icon: '🏭', title: 'Default', text: 'Factory settings, like the first boot', values: factory },
+    { id: 'stability' as const, icon: '🛡', title: 'Stability', text: on ? 'Protective settings, active now' : 'Protective settings, applied when Stability mode is on', values: stable },
+  ]
+  return (
+    <div className="section-modes">
+      {tiles.map((t) => {
+        const active = mode === t.id
+        return (
+          <button key={t.id} type="button" disabled={busy} className={`section-mode ${active ? 'active' : ''}`}
+            onClick={() => !active && onPick(t.id)}>
+            <span className="mode-head">
+              <span className="mode-icon small">{t.icon}</span><b>{t.title}</b>
+              {active && <Badge tone="good">● selected</Badge>}
+            </span>
+            <small>{t.text}</small>
+            <small className="values">{t.values}</small>
+          </button>
+        )
+      })}
+      {mode === 'mixed' && <p className="muted small mixed-note">Mixed — some items below are in Stability mode and some aren't.</p>}
     </div>
   )
 }
@@ -216,11 +251,24 @@ export function Stability() {
 
   const differs = st.on && (st.items.some((i) => i.status === 'different') || st.fans.status === 'different')
   const level = st.total_count ? st.enabled_count / st.total_count : 0
-  const group = (g: string): ReactNode => {
-    const items = st.items.filter((i) => INFO[i.key]?.group === g)
-    if (!items.length) return null
+  const pickSection = (id: string, title: string, mode: 'default' | 'stability') =>
+    run(() => api.post<StabilityResult>('/stability/section', { section: id, mode }),
+      mode === 'default' ? `${title}: factory settings restored` : `${title}: ${st.on ? 'Stability settings applied' : 'part of Stability mode'}`)
+
+  const section = (sec: StabilityState['sections'][number]): ReactNode => {
+    const items = st.items.filter((i) => sec.keys.includes(i.key))
+    const avail = items.filter((i) => i.setting.available)
+    if (!avail.length) return null
+    const title = SECTION_TITLES[sec.id] ?? sec.id
+    const summary = (pick: (i: StabilityItem) => unknown) =>
+      avail.map((i) => `${INFO[i.key].short} ${show(i, pick(i))}`).join(' · ')
     return (
-      <Card key={g} title={g}>
+      <Card key={sec.id} title={title}>
+        <SectionModes
+          mode={sec.mode as Mode} on={st.on} busy={busy}
+          factory={summary((i) => i.setting.default)} stable={summary((i) => i.value)}
+          onPick={(m) => pickSection(sec.id, title, m)}
+        />
         {items.map((i) => (
           <Row key={i.key} item={i} on={st.on} busy={busy} onPatch={(p) => patch(i.key, p)}
             onReset={() => run(() => api.post<StabilityResult>('/stability/reset', { key: i.key }), `${INFO[i.key].title} reset`)} />
@@ -290,19 +338,22 @@ export function Stability() {
         </div>
       </Card>
 
-      {GROUPS.map(group)}
+      {st.sections.map(section)}
 
       {st.fans.available && (
         <Card
-          title={<>Cooler fan curve {st.on && st.fans.enabled && st.fans.status && (
+          title={<>Fans {st.on && st.fans.enabled && st.fans.status && (
             st.fans.status === 'applied' ? <Badge tone="good">✓ applied</Badge> : <Badge tone="warn">changed since</Badge>)}</>}
-          subtitle="Optional — off by default. Spins the fans earlier so the chips stay cooler, at the cost of noise."
-          actions={<Toggle checked={st.fans.enabled} disabled={busy} label="Include fan curve"
-            onChange={(v) => run(() => api.post<StabilityResult>('/stability/config', { fans: { enabled: v } }), v ? 'Fan curve included' : 'Fan curve removed')} />}
         >
+          <SectionModes
+            mode={st.fans.enabled ? 'stability' : 'default'} on={st.on} busy={busy}
+            factory="Factory automatic curves (also sets the Fans page to Default)"
+            stable={`${st.fans.preset} curve — fans start early and ${st.fans.preset === 'stability' ? 'never fully stop' : 'follow this preset'}`}
+            onPick={(m) => pickSection('fans', 'Fans', m)}
+          />
           <div className={st.fans.enabled ? '' : 'excluded'}>
             <div className="row wrap">
-              <span className="muted">Curve:</span>
+              <span className="muted">Stability curve:</span>
               <Segmented value={st.fans.preset} options={Object.keys(st.fans.presets)} disabled={busy || !st.fans.enabled}
                 onChange={(v) => run(() => api.post<StabilityResult>('/stability/config', { fans: { preset: v } }), `Fan curve: ${v}`)} />
               {st.fans.preset !== st.fans.recommended.preset && (
@@ -311,8 +362,8 @@ export function Stability() {
             </div>
             <FanCurveEditor points={st.fans.presets[st.fans.preset]} onChange={() => {}} currentTemp={now?.cpu.temp} disabled />
             <p className="muted">
-              <span className="plus">＋</span> Lower temperatures under load. <span className="minus">－</span> Louder.
-              Fine-tune curves on the Fans page (they're replaced by this preset while Stability is on).
+              <span className="plus">＋</span> Cooler, steadier chips under load. <span className="minus">－</span> Louder.
+              Fine-tune curves on the Fans page (Stability mode's curve wins while it's on).
             </p>
           </div>
         </Card>
@@ -321,7 +372,8 @@ export function Stability() {
       <Card title="Good to know">
         <ul className="plain-list">
           <li>Stability mode is a <b>workaround</b>, not a fix — moving or pressing the laptop can still freeze it.</li>
-          <li>Changes on this page apply <b>immediately</b> while it's on. Switching an item off restores that item's value from before Stability mode.</li>
+          <li>Changes on this page apply <b>immediately</b> while it's on. Switching a single item off restores that item's value from before Stability mode.</li>
+          <li><b>Default</b> on a section puts that section's factory (first-boot) values back right away and leaves it out of Stability mode. <b>Stability</b> puts it back in.</li>
           <li>It re-applies automatically after sleep and when you plug in or unplug the charger (the firmware changes its limits then).</li>
           <li>Need full power for a game or a big job? Turn it off, keep the laptop still on a desk, and turn it back on afterwards.</li>
           <li>

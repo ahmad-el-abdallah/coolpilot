@@ -8,7 +8,7 @@ const TEST_HELP: Record<string, string> = {
   idle: 'No load — does moving alone crash it?',
   cpu: 'All CPU cores at 100%',
   ram: 'Memory stress with verification (also loads CPU)',
-  gpu: 'RTX 4060 3D load (glmark2)',
+  gpu: 'Discrete GPU 3D load (glmark2)',
   disk: 'SSD read/write stress',
   all: 'CPU + GPU + SSD together',
 }

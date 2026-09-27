@@ -264,3 +264,15 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 10px; }
 .warranty-form .row { grid-column: 1 / -1; margin-top: 4px; }
 a { color: var(--accent); }
 .icon svg { vertical-align: -0.12em; }
+
+/* ---------------------------------------------------------------- section Default / Stability switch */
+.section-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+.section-mode { text-align: left; font: inherit; color: var(--text); background: var(--panel-2); border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: border-color .15s, background .15s; }
+.section-mode:hover:not(:disabled):not(.active) { border-color: var(--muted); }
+.section-mode.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel-2)); cursor: default; }
+.section-mode:disabled:not(.active) { opacity: .6; cursor: default; }
+.section-mode small { color: var(--muted); font-size: 12px; }
+.section-mode .values { color: var(--text); opacity: .85; }
+.mode-icon.small { font-size: 16px; }
+.mixed-note { grid-column: 1 / -1; margin: 0; }
+@media (max-width: 620px) { .section-modes { grid-template-columns: 1fr; } }

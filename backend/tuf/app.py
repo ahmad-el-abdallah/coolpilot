@@ -242,6 +242,15 @@ def create_app(token: str | None = None) -> Flask:
             return _err(str(e))
         return jsonify({"results": results, "state": stability.state()})
 
+    @app.post("/api/stability/section")
+    def api_stability_section():
+        body = request.get_json(silent=True) or {}
+        try:
+            results = stability.set_section(str(body.get("section")), str(body.get("mode")))
+        except ValueError as e:
+            return _err(str(e))
+        return jsonify({"results": results, "state": stability.state()})
+
     @app.post("/api/stability/boot")
     def api_stability_boot():
         stability.set_boot(bool((request.get_json(silent=True) or {}).get("enabled")))

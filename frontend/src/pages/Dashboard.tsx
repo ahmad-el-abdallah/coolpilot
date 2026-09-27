@@ -90,7 +90,7 @@ export function Dashboard({ go }: { go: (page: string) => void }) {
           <Sparkline values={col((x) => x.cpu.temp)} max={100} color="var(--orange)" />
         </Card>
 
-        <Card title="GPU" subtitle={s?.gpu.name ?? 'RTX 4060'} actions={<button className="link" onClick={() => go('gpu')}>tune →</button>}>
+        <Card title="GPU" subtitle={s?.gpu.name ?? 'Discrete GPU'} actions={<button className="link" onClick={() => go('gpu')}>tune →</button>}>
           {s?.gpu.state === 'suspended' ? (
             <p className="muted">💤 Sleeping (saving power) — not polled so it stays asleep.</p>
           ) : (

@@ -62,7 +62,7 @@ export function Pcie() {
   return (
     <div className="page">
       <p className="banner info">
-        The RTX 4060 talks to the CPU over 8 PCIe lanes that run through CPU solder balls, the board and GPU solder
+        The NVIDIA GPU talks to the CPU over PCIe lanes that run through CPU solder balls, the board and GPU solder
         balls. When a packet arrives corrupted the hardware resends it and counts a <b>corrected error</b>. A healthy
         link shows ~0. If pressing one spot makes errors jump, that area has a weak connection.
       </p>
