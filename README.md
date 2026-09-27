@@ -323,3 +323,9 @@ cd backend && COOLPILOT_PORT=8788 COOLPILOT_CONFIG_DIR=/tmp/coolpilot-conf uv ru
 | Crash history only shows the current boot | the journal isn't persistent: `sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald` |
 | `python3 -m venv` fails (Debian / Ubuntu) | `sudo apt install python3-venv` |
 | GPU crash test does nothing | install `glmark2`; on NVIDIA laptops make sure the NVIDIA driver is loaded (`nvidia-smi`) |
+
+---
+
+## License
+
+[MIT](LICENSE.md)

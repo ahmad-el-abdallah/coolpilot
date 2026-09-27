@@ -16,3 +16,6 @@ __pycache__/
 config.json
 profiles.json
 stability.json
+
+# notes for Claude Code (local only)
+CLAUDE.md
