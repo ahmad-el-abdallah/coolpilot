@@ -132,3 +132,8 @@ export type BlackboxStatus = {
   enabled: boolean; interval: number; running: boolean; error: string | null; db_bytes: number
   last: (BlackboxSample & { profile?: string }) | null; oldest: number | null; samples: number; crashes_kept: number
 }
+
+export type FullOnce = {
+  available: boolean; active: boolean; since: number | null; until: number | null
+  back_to: number | null; percent: number | null; last: { reason: string; at: number } | null
+}

@@ -3,15 +3,15 @@ from __future__ import annotations
 
 import html
 import os
+import platform
 import re
 import shutil
 import subprocess
-import platform
 import time
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from . import blackbox, diag, fanmode, profiles, report, security, stability
+from . import battery, blackbox, diag, fanmode, profiles, report, security, stability
 from .hw import fans, gpu, pcie, sensors, sysfs
 from .hw.device import device_name
 
@@ -40,6 +40,17 @@ def conflicts() -> list[dict]:
         return []
     states = r.stdout.split()
     return [{"unit": u, "what": CONFLICTS[u]} for u, st in zip(CONFLICTS, states) if st == "active"]
+
+
+_crash_cache: dict = {"at": 0.0, "value": None}
+
+
+def _newest_crash() -> dict | None:
+    """Most recent crash, cached for a minute (the bar asks every few seconds)."""
+    if time.time() - _crash_cache["at"] > 60:
+        crashes = blackbox.crash_events(limit=5)
+        _crash_cache.update(at=time.time(), value=crashes[0] if crashes else None)
+    return _crash_cache["value"]
 
 
 def _err(msg: str, code: int = 400):
@@ -146,6 +157,8 @@ def create_app(token: str | None = None) -> Flask:
         if "value" not in body:
             return _err("missing 'value'")
         try:
+            if key == "charge_limit" and battery.active():
+                battery.stop("manual", restore=False)  # a hand-picked limit ends "100% once"
             if key == "platform_profile":
                 profiles._set_platform_profile(sysfs.SETTINGS[key].validate(body["value"]))
                 fanmode.enforce()  # the firmware just reloaded its own fan curves
@@ -331,6 +344,49 @@ def create_app(token: str | None = None) -> Flask:
     @app.get("/api/pcie/history")
     def api_pcie_history():
         return jsonify({"boots": pcie.history()})
+
+    # ------------------------------------------------------------------ charge to 100% once
+    @app.get("/api/battery/full-once")
+    def api_full_once():
+        return jsonify(battery.state())
+
+    @app.post("/api/battery/full-once")
+    def api_full_once_set():
+        try:
+            if (request.get_json(silent=True) or {}).get("enabled", True):
+                return jsonify(battery.start())
+            return jsonify(battery.stop("cancelled"))
+        except (battery.BatteryError, sysfs.SettingError) as e:
+            return _err(str(e))
+
+    # ------------------------------------------------------------------ cheap status (bar widget / CLI)
+    @app.get("/api/status")
+    def api_status():
+        """Everything the bar needs, from sysfs only: never runs nvidia-smi, so polling
+        it every few seconds doesn't keep a sleeping GPU awake."""
+        cpu = next((d for d in map(sysfs.find_hwmon, sensors.CPU_TEMP_DRIVERS) if d), None)
+        asus = sysfs.find_hwmon("asus")
+        bat = sysfs.battery()
+        last = blackbox._last or {}
+        newest = _newest_crash() if request.args.get("crash") else None
+        seen = profiles.config().get("crash_seen")
+        return jsonify({
+            "device": device_name(),
+            "profile": sysfs.read("sys/firmware/acpi/platform_profile"),
+            "profiles": sysfs.SETTINGS["platform_profile"].choices() if sysfs.SETTINGS["platform_profile"].available() else [],
+            "stability": stability.is_on(),
+            "cpu_temp": sensors._milli(f"{cpu}/temp1_input") if cpu else None,
+            "cpu_mhz": sensors._cpu_mhz()["avg"],
+            "gpu_state": gpu.power_state(),
+            "gpu_temp": last.get("gpu_temp") if last.get("gpu_state") not in (None, "suspended") else None,
+            "fans": [sysfs.read_int(f"{asus}/fan{i}_input") for i in (1, 2)] if asus else [],
+            "fan_mode": fanmode.mode(),
+            "battery": sysfs.read_int(f"{bat}/capacity") if bat else None,
+            "ac": sysfs.on_ac(),
+            "charge_limit": sysfs.SETTINGS["charge_limit"].get() if sysfs.SETTINGS["charge_limit"].available() else None,
+            "full_once": battery.active() is not None,
+            "new_crash": bool(newest and newest["boot"] != seen and time.time() - newest["end"] < 7 * 86400),
+        })
 
     # ------------------------------------------------------------------ black box + history
     @app.get("/api/blackbox")

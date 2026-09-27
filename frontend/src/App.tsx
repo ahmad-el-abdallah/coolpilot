@@ -141,6 +141,7 @@ export default function App() {
     items.push({ id: 'factory-reset', title: 'Reset everything to default', hint: 'Dashboard', keywords: 'factory reset default first boot undo restore', run: () => go('dashboard', 'factory-reset') })
     items.push({ id: 'fan-1', title: 'CPU fan curve', hint: 'Fans', keywords: 'fan curve noise rpm', run: () => go('fans', 'fan-1') })
     items.push({ id: 'fan-2', title: 'GPU fan curve', hint: 'Fans', keywords: 'fan curve noise rpm', run: () => go('fans', 'fan-2') })
+    action('a-full-once', 'Charge to 100% once', 'battery full trip charge limit 100', () => api.post('/battery/full-once', { enabled: true }), 'Charging to 100% once')
     items.push({ id: 'last-crash', title: 'What happened in the last crash', hint: 'History', keywords: 'black box freeze crash reset recording', run: () => go('history') })
     items.push({ id: 'repair-report', title: 'Make a repair report (PDF)', hint: 'Repair report', keywords: 'asus warranty service center print pdf', run: () => go('report') })
     items.push({ id: 'crash-test', title: 'Run a crash test', hint: 'Diagnostics', keywords: 'stress test freeze cpu ram gpu', run: () => go('diagnostics') })

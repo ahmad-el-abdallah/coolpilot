@@ -187,6 +187,10 @@ def resolve(key: str, value):
         if value is None:
             raise Skip("no default")
     note = ""
+    if key == "charge_limit":
+        from . import battery
+        if battery.active():  # "charge to 100% once" wins until the battery is full
+            return 100, ": 100% for one full charge"
     if key == "platform_profile":
         opts = s.choices() if s.choices else []
         if value not in opts:

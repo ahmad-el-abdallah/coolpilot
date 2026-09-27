@@ -11,6 +11,7 @@ rm -rf /opt/tuf-control
 udevadm control --reload
 systemctl daemon-reload
 rm -rf /opt/coolpilot
+rm -f /usr/local/bin/coolpilot
 USER_HOME=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)
 rm -f "$USER_HOME/.local/share/applications/coolpilot.desktop" "$USER_HOME/.local/share/applications/tuf-control.desktop"
 rm -f "$USER_HOME/.local/share/icons/hicolor/256x256/apps/coolpilot.png" "$USER_HOME/.local/share/icons/hicolor/scalable/apps/coolpilot.svg"

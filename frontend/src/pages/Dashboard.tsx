@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, type CrashEvent, type ProfilesState } from '../api'
+import { FullOnce } from '../components/FullOnce'
 import { Modal } from '../components/Modal'
 import { Badge, Button, Card, Sparkline, Stat } from '../components/ui'
 import { fmt, summarize, tempTone, usePoll, useSensorHistory, useSettings, useToast } from '../hooks'
@@ -128,6 +129,7 @@ export function Dashboard({ go }: { go: (page: string, anchor?: string) => void 
             <Stat label="Health" value={fmt.pct(s?.battery.health)} tone={s?.battery.health != null && s.battery.health < 80 ? 'warn' : undefined} />
           </div>
           <Sparkline values={col((x) => x.battery.watts ?? 0)} color="var(--blue)" />
+          <FullOnce compact />
         </Card>
 
         <Card title="Cooling & memory" actions={<button className="link" onClick={() => go('fans')}>fans →</button>}>

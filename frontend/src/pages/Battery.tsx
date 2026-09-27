@@ -1,4 +1,5 @@
 import { Card, Stat } from '../components/ui'
+import { FullOnce } from '../components/FullOnce'
 import { SettingControl } from '../components/SettingControl'
 import { fmt, useSensorHistory } from '../hooks'
 
@@ -15,6 +16,7 @@ export function Battery() {
           <Stat label="Health" value={fmt.pct(b?.health)} sub="of original capacity" tone={b?.health != null && b.health < 80 ? 'warn' : undefined} />
         </div>
         <SettingControl k="charge_limit" />
+        <FullOnce />
       </Card>
       <Card title="Display & keyboard">
         <SettingControl k="screen_brightness" />

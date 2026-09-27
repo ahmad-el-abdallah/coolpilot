@@ -723,3 +723,114 @@ def test_repair_report(client, monkeypatch):
     assert client.get("/api/report?days=14").get_json()["summary"]["crashes"] == 1
     assert client.get("/api/report?days=7").status_code == 400
     os.remove(os.path.join(diag.LOGS, name))
+
+
+# ----------------------------------------------------------------- charge to 100% once
+BAT = "sys/class/power_supply/BAT1"
+
+
+def test_charge_full_once_lifts_and_restores(client):
+    from conftest import w
+    from coolpilot import battery
+    client.post("/api/settings/charge_limit", json={"value": 80})
+    st = client.post("/api/battery/full-once", json={"enabled": True}).get_json()
+    assert st["active"] and st["back_to"] == 80
+    assert read(f"{BAT}/charge_control_end_threshold") == "100"
+    w(f"{BAT}/capacity", 97)
+    assert battery.tick() is None                          # not full yet
+    w(f"{BAT}/capacity", 100)
+    assert battery.tick() == "full"
+    assert read(f"{BAT}/charge_control_end_threshold") == "80"
+    assert client.get("/api/battery/full-once").get_json()["last"]["reason"] == "full"
+
+
+def test_charge_full_once_survives_reapply_and_times_out(client):
+    import time
+    from coolpilot import battery, profiles
+    client.post("/api/stability", json={"enabled": True})             # Stability sets 80 %
+    assert read(f"{BAT}/charge_control_end_threshold") == "80"
+    client.post("/api/battery/full-once", json={"enabled": True})
+    profiles.apply_boot(reapply=True)                                  # e.g. charger plugged in
+    assert read(f"{BAT}/charge_control_end_threshold") == "100"
+    assert battery.tick(now=time.time() + 25 * 3600) == "timeout"
+    assert read(f"{BAT}/charge_control_end_threshold") == "80"        # back to Stability's limit
+
+
+def test_charge_full_once_cancel_and_manual_override(client):
+    client.post("/api/settings/charge_limit", json={"value": 70})
+    client.post("/api/battery/full-once", json={"enabled": True})
+    client.post("/api/battery/full-once", json={"enabled": False})
+    assert read(f"{BAT}/charge_control_end_threshold") == "70"
+    client.post("/api/battery/full-once", json={"enabled": True})
+    client.post("/api/settings/charge_limit", json={"value": 90})     # picking a limit by hand ends it
+    st = client.get("/api/battery/full-once").get_json()
+    assert st["active"] is False and read(f"{BAT}/charge_control_end_threshold") == "90"
+
+
+def test_charge_full_once_without_charge_limit(client):
+    import os
+    from conftest import ROOT
+    os.remove(os.path.join(ROOT, BAT, "charge_control_end_threshold"))
+    r = client.post("/api/battery/full-once", json={"enabled": True})
+    assert r.status_code == 400 and "doesn't support" in r.get_json()["error"]
+
+
+# ----------------------------------------------------------------- lightweight status + CLI
+def test_status_is_cheap_and_complete(client):
+    s = client.get("/api/status").get_json()
+    assert s["device"] == "ASUS TUF Gaming A15 FA507NVR" and s["profile"] == "balanced"
+    assert s["cpu_temp"] == 55.0 and s["fans"] == [2800, 2700] and s["battery"] == 77
+    assert s["stability"] is False and s["full_once"] is False and s["charge_limit"] == 100
+
+
+def test_cli_bar_json_formatting():
+    from coolpilot import cli
+    s = {"device": "X", "profile": "quiet", "stability": True, "cpu_temp": 51.6, "cpu_mhz": 1500,
+         "gpu_state": "suspended", "fans": [3000, 2900], "fan_mode": "stability", "battery": 80,
+         "ac": False, "charge_limit": 80, "full_once": False, "new_crash": True}
+    out = cli.bar_json(s)
+    assert out["text"] == "⚠ 󰈐 52°" and out["class"] == ["active", "crash"]
+    assert "Stability mode: ON" in out["tooltip"] and "GPU asleep" in out["tooltip"]
+    assert cli.bar_json(None, "down")["class"] == "error"
+
+
+def test_cli_end_to_end_against_a_live_server(monkeypatch, capsys):
+    import os
+    import threading
+    from werkzeug.serving import make_server
+    from coolpilot import cli
+    from coolpilot.app import create_app
+    dist = os.environ["COOLPILOT_DIST"]
+    os.makedirs(dist, exist_ok=True)
+    with open(f"{dist}/index.html", "w") as f:
+        f.write("<html><head></head><body></body></html>")
+    srv = make_server("127.0.0.1", 0, None)
+    port = srv.server_port
+    srv.server_close()
+    monkeypatch.setenv("COOLPILOT_EXTRA_HOSTS", f"127.0.0.1:{port}")
+    srv = make_server("127.0.0.1", port, create_app("test-token"), threaded=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setattr(cli, "BASE", f"http://127.0.0.1:{port}")
+    try:
+        assert cli.cmd(["stability", "on"]) == 0
+        assert read("sys/firmware/acpi/platform_profile") == "quiet"
+        assert cli.cmd(["mode", "next"]) == 0                        # quiet -> balanced
+        assert read("sys/firmware/acpi/platform_profile") == "balanced"
+        assert cli.cmd(["charge", "full"]) == 0
+        assert read(f"{BAT}/charge_control_end_threshold") == "100"
+        assert cli.cmd(["fans", "stability"]) == 0
+        assert read("sys/class/hwmon/hwmon9/pwm1_enable") == "1"
+        capsys.readouterr()
+        assert cli.cmd(["bar"]) == 0
+        assert '"class": ["active"]' in capsys.readouterr().out
+        assert cli.cmd(["status"]) == 0 and "Stability mode: ON" in capsys.readouterr().out
+        try:
+            cli.cmd(["profile", "Nope"])
+            raise AssertionError("expected an error")
+        except cli.CliError as e:
+            assert "no profile called" in str(e)
+    finally:
+        srv.shutdown()
+    monkeypatch.setattr(cli, "BASE", "http://127.0.0.1:1")                # nothing listening
+    capsys.readouterr()
+    assert cli.cmd(["bar"]) == 0 and '"class": "error"' in capsys.readouterr().out

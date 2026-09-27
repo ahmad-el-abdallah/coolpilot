@@ -170,6 +170,14 @@ fi
 "$DEST/venv/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade "flask>=3.0" "waitress>=3.0"
 command -v restorecon >/dev/null && restorecon -R "$DEST" 2>/dev/null || true   # SELinux (Fedora)
 
+echo "==> coolpilot command (/usr/local/bin/coolpilot)"
+cat > /usr/local/bin/coolpilot <<'CLI'
+#!/bin/sh
+# CoolPilot from the terminal, scripts and status bars - see: coolpilot help
+PYTHONPATH=/opt/coolpilot/backend exec /opt/coolpilot/venv/bin/python -m coolpilot.cli "$@"
+CLI
+chmod 755 /usr/local/bin/coolpilot
+
 echo "==> Config + token in /etc/coolpilot"
 install -d -m 700 /etc/coolpilot
 if [[ ! -s /etc/coolpilot/token ]]; then

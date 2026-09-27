@@ -147,6 +147,37 @@ on the next reboot (or use **Dashboard → Reset everything to default** first).
 
 ---
 
+## Terminal command and status bar
+
+The installer adds a `coolpilot` command:
+
+```bash
+coolpilot status                 # what the laptop is doing
+coolpilot stability on|off|toggle
+coolpilot mode silent|balanced|turbo|next
+coolpilot fans default|stability
+coolpilot profile [name]         # list profiles, or apply one
+coolpilot charge full|cancel|80  # "charge to 100% once", or set the limit
+coolpilot bar                    # one-line JSON for status bars
+```
+
+**Omarchy bar** — add to `bar.layout.right` in `~/.config/omarchy/shell.json`:
+
+```json
+{ "id": "coolpilot", "type": "command", "exec": "/usr/local/bin/coolpilot bar", "interval": 5,
+  "onClick": "coolpilot open", "onRightClick": "coolpilot stability toggle", "onMiddleClick": "coolpilot mode next" }
+```
+
+**Waybar** — the same output works as a custom module:
+
+```json
+"custom/coolpilot": { "exec": "coolpilot bar", "return-type": "json", "interval": 5,
+  "on-click": "coolpilot open", "on-click-right": "coolpilot stability toggle", "on-click-middle": "coolpilot mode next" }
+```
+
+The widget shows the CPU temperature, is highlighted while Stability mode is on, shows ⚠ after an
+unseen crash, and never wakes a sleeping NVIDIA GPU.
+
 ## Usage tips
 
 - **Stability mode** is a workaround, not a fix: less heat and current means less flexing of the
