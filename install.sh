@@ -201,7 +201,14 @@ runuser -u "$USER_NAME" -- mkdir -p "$APPS" "$ICONS/256x256/apps" "$ICONS/scalab
 install -m 644 -o "$USER_NAME" -g "$USER_GROUP" "$SRC/frontend/public/icon.png" "$ICONS/256x256/apps/coolpilot.png"
 install -m 644 -o "$USER_NAME" -g "$USER_GROUP" "$SRC/frontend/public/icon.svg" "$ICONS/scalable/apps/coolpilot.svg"
 runuser -u "$USER_NAME" -- gtk-update-icon-cache -q "$ICONS" 2>/dev/null || true
-cat > "$APPS/coolpilot.desktop" <<DESKTOP
+# don't add a second launcher if the user already made one (e.g. an Omarchy web app)
+others=()
+for f in "$APPS"/*.desktop; do [[ -e $f && $f != "$APPS/coolpilot.desktop" ]] && others+=("$f"); done
+if ((${#others[@]})) && grep -qs "127.0.0.1:$PORT\|localhost:$PORT" "${others[@]}"; then
+  rm -f "$APPS/coolpilot.desktop"
+  echo "   (you already have a launcher for http://127.0.0.1:$PORT - not adding another)"
+else
+  cat > "$APPS/coolpilot.desktop" <<DESKTOP
 [Desktop Entry]
 Name=CoolPilot
 Comment=Fans, power, CPU frequency and crash diagnostics for your laptop
@@ -211,7 +218,8 @@ Terminal=false
 Type=Application
 Categories=System;Settings;
 DESKTOP
-chown "$USER_NAME:$USER_GROUP" "$APPS/coolpilot.desktop"
+  chown "$USER_NAME:$USER_GROUP" "$APPS/coolpilot.desktop"
+fi
 
 up() { "$PYTHON" -c "import urllib.request as u; u.urlopen('http://127.0.0.1:$PORT/', timeout=2)" 2>/dev/null; }
 for _ in $(seq 30); do up && break; sleep 0.5; done
