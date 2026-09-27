@@ -88,7 +88,11 @@ function CrashCard({ c }: { c: CrashEvent }) {
 }
 
 export function History() {
-  const [range, setRange] = useState<(typeof RANGES)[number]>('24h')
+  // a link like #/history?range=30d opens that range
+  const [range, setRange] = useState<(typeof RANGES)[number]>(() => {
+    const r = new URLSearchParams(location.hash.split('?')[1]).get('range')
+    return (RANGES as readonly string[]).includes(r ?? '') ? (r as (typeof RANGES)[number]) : '24h'
+  })
   const [showAll, setShowAll] = useState(false)
   const { data: h } = usePoll<HistoryData>(`/history?range=${range}`, 60000)
   const { data: bb, setData: setBb } = usePoll<BlackboxStatus>('/blackbox', 15000)

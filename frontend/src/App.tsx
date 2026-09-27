@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Setting } from './api'
 import { SearchPalette, type SearchItem } from './components/SearchPalette'
 import { SettingsContext, ToastContext, type Toast } from './hooks'
+import { Alerts } from './pages/Alerts'
 import { Battery } from './pages/Battery'
 import { Dashboard } from './pages/Dashboard'
 import { Diagnostics } from './pages/Diagnostics'
@@ -22,6 +23,13 @@ const Bolt = () => (
   </svg>
 )
 
+// monochrome bell: 🔔 is a colour emoji in most fonts
+const BellIcon = () => (
+  <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true">
+    <path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.5-6.84V3a1.5 1.5 0 0 0-3 0v1.16A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2z" />
+  </svg>
+)
+
 const PAGES = [
   { id: 'dashboard', label: 'Dashboard', icon: '◉', keywords: 'home overview sensors temperature live stability' },
   { id: 'stability', label: 'Stability mode', icon: '⛨', keywords: 'stability safe workaround freeze crash protect configure preset cool' },
@@ -29,7 +37,8 @@ const PAGES = [
   { id: 'fans', label: 'Fans', icon: '✱', keywords: 'fan curve rpm noise cooling' },
   { id: 'gpu', label: 'GPU', icon: '▣', keywords: 'nvidia rtx graphics' },
   { id: 'battery', label: 'Battery & Display', icon: '▭', keywords: 'charge limit brightness keyboard backlight screen' },
-  { id: 'profiles', label: 'Profiles', icon: '☰', keywords: 'save preset boot startup' },
+  { id: 'profiles', label: 'Profiles & backup', icon: '☰', keywords: 'save preset boot startup backup restore export import file reinstall' },
+  { id: 'alerts', label: 'Alerts', icon: <BellIcon />, keywords: 'alerts notifications notify desktop popup warning hot temperature pcie errors crash' },
   { id: 'history', label: 'History & black box', icon: '◷', keywords: 'history chart graph black box recorder crash timeline temperature over time' },
   { id: 'report', label: 'Repair report', icon: '▤', keywords: 'repair report warranty service center pdf print export evidence' },
   { id: 'diagnostics', label: 'Crash diagnostics', icon: '⚠', keywords: 'crash freeze test stress log report history' },
@@ -144,6 +153,10 @@ export default function App() {
     action('a-full-once', 'Charge to 100% once', 'battery full trip charge limit 100', () => api.post('/battery/full-once', { enabled: true }), 'Charging to 100% once')
     items.push({ id: 'last-crash', title: 'What happened in the last crash', hint: 'History', keywords: 'black box freeze crash reset recording', run: () => go('history') })
     items.push({ id: 'repair-report', title: 'Make a repair report (PDF)', hint: 'Repair report', keywords: 'asus warranty service center print pdf', run: () => go('report') })
+    items.push({ id: 'backup', title: 'Export or import settings (backup)', hint: 'Profiles & backup', keywords: 'backup restore export import file save reinstall distro', run: () => go('profiles', 'backup') })
+    items.push({ id: 'alerts-test', title: 'Send a test alert', hint: 'Alerts', keywords: 'notification desktop popup test', run: () => go('alerts') })
+    action('a-alerts-on', 'Turn desktop alerts on', 'notifications enable', () => api.post('/alerts', { enabled: true }), 'Desktop alerts on')
+    action('a-alerts-off', 'Turn desktop alerts off', 'notifications disable mute silence', () => api.post('/alerts', { enabled: false }), 'Desktop alerts off')
     items.push({ id: 'crash-test', title: 'Run a crash test', hint: 'Diagnostics', keywords: 'stress test freeze cpu ram gpu', run: () => go('diagnostics') })
     items.push({ id: 'pcie-watch', title: 'GPU link press test (PCIe errors)', hint: 'PCIe link health', keywords: 'solder balls bga weak spot press pcie errors', run: () => go('pcie') })
     return items
@@ -178,6 +191,7 @@ export default function App() {
             {page === 'gpu' && <Gpu />}
             {page === 'battery' && <Battery />}
             {page === 'profiles' && <Profiles />}
+            {page === 'alerts' && <Alerts />}
             {page === 'history' && <History />}
             {page === 'report' && <Report />}
             {page === 'diagnostics' && <Diagnostics />}

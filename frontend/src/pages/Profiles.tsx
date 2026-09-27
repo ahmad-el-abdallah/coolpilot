@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, type ProfilesState } from '../api'
+import { Backup } from '../components/Backup'
 import { Badge, Button, Card, Toggle } from '../components/ui'
 import { summarize, usePoll, useSettings, useToast } from '../hooks'
 
@@ -81,6 +82,8 @@ export function Profiles() {
           </Card>
         ))}
       </div>
+
+      <Backup onRestored={refresh} />
     </div>
   )
 }

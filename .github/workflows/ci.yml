@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+      - run: pip install flask waitress pytest
+      - run: python -m pytest -q
+        working-directory: backend
+
+  frontend:
+    name: UI type-check and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - name: The committed prebuilt UI (frontend/dist) is up to date
+        run: |
+          git diff --stat --exit-code -- frontend/dist || {
+            echo "::error::frontend/dist is out of date - run 'npm run build' in frontend/ and commit it"; exit 1; }
+
+  shell:
+    name: Shell scripts (shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -S warning install.sh uninstall.sh crashdiag/*.sh ci/*.sh
+
+  distro:
+    name: Install on ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:24.04", "debian:stable", "fedora:latest", "opensuse/tumbleweed", "archlinux:latest"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build a ${{ matrix.image }} image with systemd
+        run: docker build -q -t coolpilot-test --build-arg IMAGE=${{ matrix.image }} ci
+      - name: Boot it
+        run: |
+          docker run -d --name cp --privileged --cgroupns=host \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock --tmpfs /tmp \
+            -v "$PWD:/src:ro" coolpilot-test
+      - name: Install, use and remove CoolPilot
+        run: docker exec cp bash /src/ci/distro-test.sh
+      - name: Service logs
+        if: failure()
+        run: docker exec cp journalctl -u coolpilot -n 80 --no-pager || true

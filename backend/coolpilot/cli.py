@@ -11,6 +11,9 @@ the service's venv without importing the rest of the app.
     coolpilot profile [name]           list profiles, or apply one
     coolpilot gaming                   Gaming mode (best performance)
     coolpilot charge full|cancel|<20-100>
+    coolpilot alerts [on|off|test]     desktop alerts (hot CPU, GPU link errors, ...)
+    coolpilot export [file]            save all settings to a file (default: print them)
+    coolpilot import <file>            restore settings from an exported file
     coolpilot open                     open the web app
 """
 from __future__ import annotations
@@ -201,6 +204,50 @@ def cmd(argv: list[str]) -> int:
             _notify(f"Charge limit: {int(args[0])}%")
         else:
             raise CliError("usage: coolpilot charge full|cancel|<20-100>")
+        return 0
+
+    if what == "alerts":
+        want = (args or ["status"])[0]
+        if want in ("on", "off"):
+            api("POST", "/alerts", {"enabled": want == "on"})
+            _notify(f"Desktop alerts {want}")
+        elif want == "test":
+            r = api("POST", "/alerts/test")
+            if not r.get("sent"):
+                raise CliError(f"test alert not shown: {r.get('error', 'unknown reason')}")
+            print(f"Test alert shown on {r['sent']} desktop(s) via {', '.join(r['via'])}")
+        elif want == "status":
+            a = api("GET", "/alerts")
+            print(f"Desktop alerts: {'on' if a['enabled'] else 'off'}")
+            for i in a["items"]:
+                limit = f" ({i['threshold']} {i['unit']})" if "threshold" in i else ""
+                print(f"  {'✓' if i['enabled'] else '·'} {i['label']}{limit}")
+        else:
+            raise CliError("usage: coolpilot alerts [on|off|test]")
+        return 0
+
+    if what == "export":
+        data = json.dumps(api("GET", "/backup"), indent=2)
+        if args:
+            with open(args[0], "w") as f:
+                f.write(data + "\n")
+            print(f"Settings saved to {args[0]}")
+        else:
+            print(data)
+        return 0
+
+    if what == "import":
+        if not args:
+            raise CliError("usage: coolpilot import <file>")
+        try:
+            with open(args[0]) as f:
+                data = json.load(f)
+        except (OSError, ValueError) as e:
+            raise CliError(f"can't read {args[0]}: {e}") from e
+        r = api("POST", "/backup/restore", {"data": data})
+        for w in r.get("warnings") or []:
+            print(f"  note: {w}")
+        _notify(f"Settings restored ({', '.join(r['restored'])})", _problems(r.get("results")))
         return 0
 
     if what == "open":

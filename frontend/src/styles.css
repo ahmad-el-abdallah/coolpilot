@@ -88,7 +88,7 @@ main { min-width: 0; }
 /* ---------------------------------------------------------------- cards */
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); transition: box-shadow .3s; }
 .card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
-.card-actions { display: flex; gap: 8px; align-items: center; }
+.card-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; white-space: nowrap; }
 .flash { box-shadow: 0 0 0 2px var(--accent) !important; border-radius: 8px; }
 
 .hero .hero-body { display: flex; gap: 20px; align-items: center; justify-content: space-between; }

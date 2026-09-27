@@ -1,3 +1,5 @@
+import pytest
+
 from conftest import ARM, read
 
 
@@ -874,3 +876,203 @@ def test_factory_defaults_follow_the_charger(client):
     w("sys/class/power_supply/ACAD/online", 0)                           # unplug
     profiles.apply_boot(reapply=True)
     assert read("sys/firmware/acpi/platform_profile") == "balanced"
+
+
+# ----------------------------------------------------------------- desktop alerts
+@pytest.fixture
+def shown(monkeypatch):
+    """Capture alerts instead of showing them on a desktop."""
+    from coolpilot import alerts
+    out = []
+    monkeypatch.setattr(alerts, "_deliver_later", lambda a: out.append(a))
+    return out
+
+
+def test_alert_settings_roundtrip_and_validation(client):
+    a = client.get("/api/alerts").get_json()
+    assert a["enabled"] is True and {i["kind"] for i in a["items"]} == {"cpu_hot", "pcie_burst", "stability_off", "crash"}
+    a = client.post("/api/alerts", json={"items": {"cpu_hot": {"threshold": 85}, "crash": {"enabled": False}}}).get_json()
+    items = {i["kind"]: i for i in a["items"]}
+    assert items["cpu_hot"]["threshold"] == 85 and items["crash"]["enabled"] is False
+    assert client.post("/api/alerts", json={"enabled": False}).get_json()["enabled"] is False
+    for bad in ({"items": {"cpu_hot": {"threshold": 200}}}, {"items": {"nope": {}}},
+                {"items": {"crash": {"threshold": 5}}}, {"enabled": "yes"}):
+        assert client.post("/api/alerts", json=bad).status_code == 400, bad
+
+
+def test_cpu_hot_alert_needs_a_few_hot_readings_and_rearms(client, shown):
+    from coolpilot import alerts
+    wt = alerts.Watcher()
+    for i in range(2):
+        wt.check({"cpu_temp": 95, "stability": 1}, now=1000 + i * 2)
+    assert shown == []                                        # a short spike isn't enough
+    wt.check({"cpu_temp": 95, "stability": 1}, now=1004)
+    assert [a["kind"] for a in shown] == ["cpu_hot"] and shown[0]["critical"]
+    for i in range(10):                                       # stays hot: no repeats
+        wt.check({"cpu_temp": 96, "stability": 1}, now=1006 + i * 2)
+    assert len(shown) == 1
+    wt.check({"cpu_temp": 70, "stability": 1}, now=2000)      # cooled down...
+    for i in range(3):                                        # ...and hot again after the cooldown
+        wt.check({"cpu_temp": 95, "stability": 1}, now=2002 + i * 2)
+    assert len(shown) == 2
+
+
+def test_pcie_burst_alert_counts_the_last_minute(client, shown):
+    from coolpilot import alerts
+    wt = alerts.Watcher()
+    for i in range(20):                                       # 20 x 4 errors spread over 40 s = 80 < 100
+        wt.check({"pcie_new": 4}, now=1000 + i * 2)
+    assert shown == []
+    wt.check({"pcie_new": 30}, now=1042)
+    assert [a["kind"] for a in shown] == ["pcie_burst"] and "110 GPU link errors" in shown[0]["title"]
+    wt.check({"pcie_new": 500}, now=1050)                     # cooldown
+    assert len(shown) == 1
+
+
+def test_stability_off_alert_only_on_a_change(client, shown):
+    from coolpilot import alerts
+    wt = alerts.Watcher()
+    wt.check({"stability": 0}, now=1000)                      # already off at startup: quiet
+    wt.check({"stability": 1}, now=1002)
+    wt.check({"stability": 0}, now=1004)
+    assert [a["kind"] for a in shown] == ["stability_off"]
+
+
+def test_alerts_respect_the_switches(client, shown):
+    from coolpilot import alerts
+    client.post("/api/alerts", json={"items": {"stability_off": {"enabled": False}}})
+    wt = alerts.Watcher()
+    wt.check({"stability": 1}, now=1000)
+    wt.check({"stability": 0}, now=1002)
+    assert shown == []
+    client.post("/api/alerts", json={"enabled": False, "items": {"stability_off": {"enabled": True}}})
+    for i in range(5):
+        wt.check({"cpu_temp": 99, "pcie_new": 999, "stability": i % 2}, now=2000 + i * 2)
+    assert shown == []                                        # everything off
+
+
+def test_crash_alert_once_per_crash(client, shown):
+    import time
+    from coolpilot import alerts, profiles
+    wt = alerts.Watcher()
+    event = {"boot": CRASH_BOOT, "end": time.time() - 300}
+    assert wt.crash(event)["kind"] == "crash"
+    assert wt.crash(event) is None                             # not again after a restart of the service
+    assert wt.crash({"boot": "c" * 32, "end": time.time() - 3 * 86400}) is None   # too old
+    profiles.update_config(crash_seen="d" * 32)
+    assert wt.crash({"boot": "d" * 32, "end": time.time()}) is None             # already looked at it
+    assert client.get("/api/alerts").get_json()["recent"][0]["kind"] == "crash"
+
+
+def test_alert_delivery_uses_each_users_session_bus(client, monkeypatch, tmp_path):
+    import os
+    from coolpilot import alerts
+    for uid in ("1000", "120"):                                # a user and a login-screen account
+        (tmp_path / uid).mkdir()
+        (tmp_path / uid / "bus").touch()
+    monkeypatch.setattr(alerts, "RUN_USER", str(tmp_path))
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    assert [u for u, _ in alerts.sessions()] == [1000]
+    calls = []
+
+    class Done:
+        returncode = 0
+    monkeypatch.setattr(alerts.shutil, "which", lambda t: f"/usr/bin/{t}" if t == "busctl" else None)
+    monkeypatch.setattr(alerts.pwd, "getpwuid", lambda uid: type("P", (), {"pw_dir": "/home/u", "pw_gid": 1000})())
+    monkeypatch.setattr(alerts.subprocess, "run", lambda cmd, **kw: calls.append((cmd, kw)) or Done())
+    r = alerts.deliver("Title", "Body")
+    assert r == {"sent": 1, "via": ["busctl"]}
+    cmd, kw = calls[0]
+    assert cmd[:3] == ["busctl", "--user", "call"] and "Title" in cmd
+    assert kw["user"] == 1000 and kw["env"]["DBUS_SESSION_BUS_ADDRESS"] == f"unix:path={tmp_path}/1000/bus"
+
+
+# ----------------------------------------------------------------- backup / restore
+def test_backup_roundtrip(client):
+    from coolpilot import profiles
+    client.post("/api/profiles", json={"name": "Lectures", "description": "quiet"})
+    client.post("/api/stability/config", json={"items": {"cpu_max_mhz": {"value": 2500}}})
+    client.post("/api/alerts", json={"items": {"cpu_hot": {"threshold": 88}}})
+    client.post("/api/profiles/Lectures/boot", json={"enabled": True})
+    profiles.update_config(charge_full_once={"since": 1}, crash_seen="e" * 32)
+    data = client.get("/api/backup").get_json()
+    assert data["format"] == "coolpilot-backup" and "Lectures" in data["profiles"]
+    assert "charge_full_once" not in data["preferences"] and "crash_seen" not in data["preferences"]
+    assert "_before_stability" not in data["profiles"]
+
+    client.post("/api/reset", json={"delete_profiles": True})
+    client.post("/api/alerts", json={"items": {"cpu_hot": {"threshold": 95}}})
+    info = client.post("/api/backup/inspect", json={"data": data}).get_json()
+    assert info["profiles"] == ["Lectures"] and info["warnings"] == []
+    r = client.post("/api/backup/restore", json={"data": data}).get_json()
+    assert r["restored"] == ["profiles", "stability", "preferences"]
+    names = [p["name"] for p in client.get("/api/profiles").get_json()["profiles"]]
+    assert "Lectures" in names
+    stab = {i["key"]: i for i in client.get("/api/stability").get_json()["items"]}
+    assert stab["cpu_max_mhz"]["value"] == 2500
+    assert {i["kind"]: i for i in client.get("/api/alerts").get_json()["items"]}["cpu_hot"]["threshold"] == 88
+    assert profiles.config()["boot_profile"] == "Lectures"
+
+
+def test_restore_turns_stability_on_like_the_backup(client):
+    client.post("/api/stability", json={"enabled": True})
+    data = client.get("/api/backup").get_json()
+    client.post("/api/stability", json={"enabled": False})
+    assert read("sys/firmware/acpi/platform_profile") == "balanced"
+    client.post("/api/backup/restore", json={"data": data})
+    assert client.get("/api/stability").get_json()["on"] is True
+    assert read("sys/firmware/acpi/platform_profile") == "quiet"
+    client.post("/api/stability", json={"enabled": False})         # and it can still restore
+    assert read("sys/firmware/acpi/platform_profile") == "balanced"
+
+
+def test_restore_only_some_parts(client):
+    client.post("/api/profiles", json={"name": "Mine"})
+    client.post("/api/alerts", json={"enabled": False})
+    data = client.get("/api/backup").get_json()
+    client.post("/api/reset", json={"delete_profiles": True})
+    client.post("/api/alerts", json={"enabled": True})
+    client.post("/api/backup/restore", json={"data": data, "parts": ["profiles"]})
+    assert "Mine" in [p["name"] for p in client.get("/api/profiles").get_json()["profiles"]]
+    assert client.get("/api/alerts").get_json()["enabled"] is True   # preferences not touched
+    assert client.post("/api/backup/restore", json={"data": data, "parts": []}).status_code == 400
+
+
+def test_backup_rejects_bad_files_and_drops_bad_values(client):
+    for bad in (None, {"format": "other"}, {"format": "coolpilot-backup", "version": 99}, [1, 2]):
+        assert client.post("/api/backup/inspect", json={"data": bad}).status_code == 400, bad
+    data = {"format": "coolpilot-backup", "version": 1, "profiles": {
+        "Good": {"settings": {"platform_profile": "quiet", "ppt_pl1": 40, "cpu_boost": False, "epp": "__default__"}},
+        "Bad values": {"settings": {"ppt_pl1": "lots", "made_up": 1, "cpu_boost": "yes"},
+                       "fans": {"1": {"custom": True, "points": [[1, 2]]}}},
+        "Stability": {"settings": {}}, "_hidden": {"settings": {}}},
+        "stability": {"items": {"cpu_max_mhz": {"value": -5, "enabled": False}, "nope": {}}},
+        "preferences": {"boot_profile": "Missing one", "fan_mode": "turbo", "alerts": {"items": {"cpu_hot": {"threshold": 1}}}}}
+    info = client.post("/api/backup/inspect", json={"data": data}).get_json()
+    assert info["profiles"] == ["Bad values", "Good"]
+    text = " | ".join(info["warnings"])
+    for bit in ("ppt_pl1 skipped", "made_up skipped", "cpu_boost skipped", "fan 1 skipped", "built-in profile",
+                "invalid name", "cpu_max_mhz value skipped", "unknown item nope", "alerts skipped"):
+        assert bit in text, bit
+    r = client.post("/api/backup/restore", json={"data": data}).get_json()
+    assert any("isn't on this laptop" in w for w in r["warnings"])
+    good = next(p for p in client.get("/api/profiles").get_json()["profiles"] if p["name"] == "Good")
+    assert good["settings"] == {"platform_profile": "quiet", "ppt_pl1": 40, "cpu_boost": False, "epp": "__default__"}
+
+
+def test_cli_export_and_import(client, monkeypatch, tmp_path, capsys):
+    from coolpilot import cli
+    calls = []
+
+    def fake_api(method, path, body=None):
+        calls.append((method, path, body))
+        if path == "/backup":
+            return client.get("/api/backup").get_json()
+        return client.open(f"/api{path}", method=method, json=body).get_json()
+    monkeypatch.setattr(cli, "api", fake_api)
+    out = tmp_path / "b.json"
+    assert cli.cmd(["export", str(out)]) == 0 and out.exists()
+    assert cli.cmd(["import", str(out)]) == 0
+    assert calls[-1][:2] == ("POST", "/backup/restore")
+    assert "Settings restored" in capsys.readouterr().out
+    assert cli.cmd(["alerts", "off"]) == 0 and client.get("/api/alerts").get_json()["enabled"] is False

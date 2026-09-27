@@ -137,3 +137,16 @@ export type FullOnce = {
   available: boolean; active: boolean; since: number | null; until: number | null
   back_to: number | null; percent: number | null; last: { reason: string; at: number } | null
 }
+
+export type AlertItem = {
+  kind: 'cpu_hot' | 'pcie_burst' | 'stability_off' | 'crash'
+  label: string; help: string; enabled: boolean
+  threshold?: number; min?: number; max?: number; unit?: string
+}
+export type AlertEvent = { id: string; kind: string; ts: number; title: string; body: string; critical: boolean; sent: number | null }
+export type AlertsState = { enabled: boolean; items: AlertItem[]; recent: AlertEvent[]; desktops: number; tools: string[] }
+
+export type BackupInfo = {
+  device: string | null; exported: number | null; this_device: string
+  profiles: string[]; stability_items: number; stability_on?: boolean; preferences: string[]; warnings: string[]
+}

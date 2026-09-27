@@ -89,7 +89,7 @@ cmd_test() {
   echo "== test: $TEST for $mins min — log: $log"
   echo "== Let it warm up ~2 min, then move/lift/tilt the laptop like when it crashes."
   echo "== Ctrl+C to stop early."
-  monitor "$log" "$kl" & local MON=$!
+  monitor "$log" "$kl" &
   start_load "$TEST"
   trap 'for p in $(pgrep -P $$); do killtree "$p"; done; rm -rf "$DIR/diskload"; echo; echo "== stopped, survived. log: $log"; echo "survived $TEST $(date)" >> "$DIR/results.txt"; exit' INT TERM
   cat <<'EOF'
@@ -113,7 +113,10 @@ EOF
 }
 
 cmd_report() {
-  local log; log=$(ls -t "$LOGS"/*[a-z].log 2>/dev/null | grep -v kernel | head -1)
+  local log
+  # our own timestamped log names; ls -t gives the newest
+  # shellcheck disable=SC2010
+  log=$(ls -t "$LOGS"/*[a-z].log 2>/dev/null | grep -v kernel | head -1)
   [[ -z $log ]] && { echo "no logs yet"; exit; }
   echo "== last test log: $log"
   head -1 "$log"; tail -n 15 "$log"

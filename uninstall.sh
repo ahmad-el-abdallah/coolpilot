@@ -8,7 +8,7 @@ rm -f /etc/systemd/system/coolpilot{,-boot,-resume}.service /etc/udev/rules.d/90
 systemctl disable --now tuf-control.service tuf-control-boot.service tuf-control-resume.service 2>/dev/null || true
 rm -f /etc/systemd/system/tuf-control{,-boot,-resume}.service /etc/udev/rules.d/90-tuf-control.rules
 rm -rf /opt/tuf-control
-udevadm control --reload
+udevadm control --reload 2>/dev/null || true   # no udev daemon in containers
 systemctl daemon-reload
 rm -rf /opt/coolpilot
 rm -f /usr/local/bin/coolpilot

@@ -68,7 +68,7 @@ fi
 
 # ------------------------------------------------------------------ Python 3.9+ with venv
 PYTHON=
-for c in python3.13 python3.12 python3.11 python3.10 python3.9 python3 /usr/bin/python3; do
+for c in python3.14 python3.13 python3.12 python3.11 python3.10 python3.9 python3 /usr/bin/python3; do
   p=$(command -v "$c" 2>/dev/null) || continue
   [[ $p == "$USER_HOME"/* ]] && continue  # the service must not depend on a user-installed Python
   if "$p" -c 'import sys, venv, ensurepip; sys.exit(sys.version_info < (3, 9))' 2>/dev/null; then
@@ -190,7 +190,7 @@ for u in coolpilot coolpilot-boot coolpilot-resume; do
   sed "s/@USER@/$USER_NAME/" "$SRC/systemd/$u.service" > "/etc/systemd/system/$u.service"
 done
 sed "s|/usr/bin/systemctl|$SYSTEMCTL|" "$SRC/systemd/90-coolpilot.rules" > /etc/udev/rules.d/90-coolpilot.rules
-udevadm control --reload
+udevadm control --reload 2>/dev/null || true   # no udev daemon in containers
 systemctl daemon-reload
 systemctl enable coolpilot-boot.service coolpilot-resume.service >/dev/null
 systemctl enable coolpilot.service >/dev/null

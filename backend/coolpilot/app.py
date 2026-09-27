@@ -11,7 +11,7 @@ import time
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from . import battery, blackbox, diag, fanmode, profiles, report, security, stability
+from . import alerts, backup, battery, blackbox, diag, fanmode, profiles, report, security, stability
 from .hw import fans, gpu, pcie, sensors, sysfs
 from .hw.device import device_name
 
@@ -59,6 +59,7 @@ def _err(msg: str, code: int = 400):
 
 def create_app(token: str | None = None) -> Flask:
     app = Flask(__name__, static_folder=None)
+    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # biggest request: an imported backup
     token = token or security.load_token()
     security.install(app, token)
 
@@ -442,8 +443,56 @@ def create_app(token: str | None = None) -> Flask:
     def api_report_symptoms():
         return jsonify(report.save_symptoms((request.get_json(silent=True) or {}).get("symptoms", "")))
 
+    # ------------------------------------------------------------------ alerts
+    @app.get("/api/alerts")
+    def api_alerts():
+        return jsonify(alerts.state())
+
+    @app.post("/api/alerts")
+    def api_alerts_set():
+        try:
+            return jsonify(alerts.update(request.get_json(silent=True) or {}))
+        except ValueError as e:
+            return _err(str(e))
+
+    @app.post("/api/alerts/test")
+    def api_alerts_test():
+        return jsonify(alerts.test())
+
+    @app.delete("/api/alerts/recent")
+    def api_alerts_clear():
+        alerts.clear_recent()
+        return jsonify(alerts.state())
+
+    # ------------------------------------------------------------------ backup / restore
+    @app.get("/api/backup")
+    def api_backup():
+        return jsonify(backup.export())
+
+    @app.post("/api/backup/inspect")
+    def api_backup_inspect():
+        try:
+            return jsonify(backup.inspect((request.get_json(silent=True) or {}).get("data")))
+        except backup.BackupError as e:
+            return _err(str(e))
+
+    @app.post("/api/backup/restore")
+    def api_backup_restore():
+        body = request.get_json(silent=True) or {}
+        parts = body.get("parts", list(backup.PARTS))
+        if not isinstance(parts, list):
+            return _err("parts must be a list")
+        try:
+            return jsonify(backup.restore(body.get("data"), parts))
+        except backup.BackupError as e:
+            return _err(str(e))
+
     @app.errorhandler(403)
     def _forbidden(e):
         return _err(getattr(e, "description", "forbidden"), 403)
+
+    @app.errorhandler(413)
+    def _too_big(e):
+        return _err("that file is too big (2 MB at most)", 413)
 
     return app

@@ -2,6 +2,11 @@
   <img src="docs/banner.png" alt="CoolPilot: a web control panel that keeps your Linux laptop cool, quiet and stable" width="100%">
 </p>
 
+<p align="center">
+  <a href="https://github.com/ahmad-el-abdallah/coolpilot/actions/workflows/ci.yml"><img src="https://github.com/ahmad-el-abdallah/coolpilot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
+
 # CoolPilot
 
 A local web control panel for **laptops on Linux**: power modes, CPU frequency and power
@@ -22,6 +27,27 @@ cool and steady to reduce freezes until it is repaired.
 
 ---
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/dashboard.png" alt="Dashboard: live temperatures, clocks, fans and battery, with Stability mode on"><br><sub><b>Dashboard</b>: live sensors, Stability mode and quick mode switch</sub></td>
+    <td width="50%"><img src="docs/screenshots/history.png" alt="History: 30 days of temperatures with crash markers, cooler and crash-free after Stability mode was turned on"><br><sub><b>History</b>: 30 days of temperatures and crashes, before and after Stability mode</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/stability.png" alt="Stability mode page with presets and per-section Default / Stability choices"><br><sub><b>Stability mode</b>: pick exactly which protections to use</sub></td>
+    <td><img src="docs/screenshots/fans.png" alt="Fans page: Default, Stability and Custom fan modes and a curve editor"><br><sub><b>Fans</b>: fan modes that stick, drag-and-drop curve editor</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/alerts.png" alt="Alerts page: desktop alerts with a switch for each one"><br><sub><b>Alerts</b>: desktop notifications, each one can be switched off</sub></td>
+    <td><img src="docs/screenshots/report.png" alt="Repair report for the service center"><br><sub><b>Repair report</b>: everything the service center needs, as PDF or HTML</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots use example data from the demo server (see Development), not a real machine.</sub>
+
+---
+
 ## Features
 
 | Page | What you can do |
@@ -32,7 +58,8 @@ cool and steady to reduce freezes until it is repaired.
 | **Fans** | Fan mode buttons: **Default** (factory) or **Stability** (steady, never-stop curve). Drag-and-drop 8-point curve editor per fan. The choice sticks across reboot, sleep and mode changes. |
 | **GPU** | NVIDIA Dynamic Boost and temperature target, live GPU stats (doesn't wake a sleeping GPU). |
 | **Battery & Display** | Charge limit (e.g. 80%), battery health, screen brightness, keyboard backlight, panel overdrive. |
-| **Profiles** | Built-in Stability, Quiet, Balanced, Performance, **Gaming** (Turbo, full boost, highest power limits the firmware allows, maximum GPU boost, cooler fan curve) and **Factory defaults** (Balanced on battery, Turbo on the charger, switching by itself). Save your own, apply them, or set one to apply at every boot. |
+| **Alerts** | Desktop notifications when the CPU gets too hot, when the CPU ↔ GPU link has a burst of errors, when Stability mode turns off, and after a freeze or unexpected restart. Turn all alerts off at once or each one separately, set the temperature and error thresholds, send a test alert, and see recent alerts. Works with any desktop that shows notifications (GNOME, KDE, Hyprland/mako, Sway, …). |
+| **Profiles & backup** | Built-in Stability, Quiet, Balanced, Performance, **Gaming** (Turbo, full boost, highest power limits the firmware allows, maximum GPU boost, cooler fan curve) and **Factory defaults** (Balanced on battery, Turbo on the charger, switching by itself). Save your own, apply them, or set one to apply at every boot. **Export all settings to one file** and import them after a reinstall, on another distro or on another laptop (values are fitted to the new machine's limits). |
 | **History & black box** | An always-on recorder writes temperatures, load, fans, power and GPU link errors to disk every 2 s. After a freeze or reset you see **what the laptop was doing in its last 2 minutes**, plus charts over 6 hours to 90 days with crash markers and Stability-mode periods. |
 | **Repair report** | One document for the service center: device & serial, warranty, your symptom description, crash timeline with black-box readings, PCIe link errors, CPU machine-check errors and stress-test results. Print / save as PDF or download as HTML. Sessions you powered off on purpose can be left out. |
 | **Crash diagnostics** | Run CPU / RAM / GPU / SSD / idle stress tests while logging sensors to disk every 0.5 s (the log survives a freeze), mark which area of the laptop you're pressing, read the crash report, see which past sessions ended in a crash. |
@@ -163,6 +190,9 @@ coolpilot fans default|stability
 coolpilot profile [name]         # list profiles, or apply one
 coolpilot gaming                 # Gaming mode: best performance
 coolpilot charge full|cancel|80  # "charge to 100% once", or set the limit
+coolpilot alerts [on|off|test]   # desktop alerts: show, switch on/off, send a test
+coolpilot export [file]          # save all settings to a file (or print them)
+coolpilot import <file>          # restore settings from an exported file
 coolpilot bar                    # one-line JSON for status bars
 ```
 
@@ -283,10 +313,13 @@ backend/            Flask API (Python)
   coolpilot/diag.py         crash tests + crash history
   coolpilot/blackbox.py     always-on recorder, history store, crash capture
   coolpilot/report.py       repair report
-  tests/              pytest suite against a fake sysfs tree
+  coolpilot/alerts.py       desktop alerts (checks + delivery to each user's desktop)
+  coolpilot/backup.py       settings export / import
+  tests/              pytest suite against a fake sysfs tree, plus demo_server.py
 frontend/           React + TypeScript + Vite UI
 crashdiag/          standalone crash-test and PCIe-watch scripts
 systemd/            service units + udev rule
+ci/                 install test on Ubuntu, Debian, Fedora, openSUSE and Arch (used by GitHub Actions)
 install.sh / uninstall.sh
 ```
 
@@ -311,6 +344,18 @@ Running the backend as a normal user works for reading (writes fail with "permis
 cd backend && COOLPILOT_PORT=8788 COOLPILOT_CONFIG_DIR=/tmp/coolpilot-conf uv run python -m coolpilot
 ```
 
+**Demo server** — the whole app with example data (a month of history, crashes, alerts), no hardware
+needed and nothing read from or written to your machine. Used for the screenshots above:
+
+```bash
+cd frontend && npm run build && cd ../backend && uv run python tests/demo_server.py   # http://127.0.0.1:8790
+```
+
+**Continuous integration** — every push runs the backend tests on Python 3.9–3.14, type-checks and
+builds the UI (and checks the committed `frontend/dist` matches), runs shellcheck, and installs,
+uses and uninstalls CoolPilot in systemd containers of Ubuntu, Debian, Fedora, openSUSE and Arch
+(`ci/distro-test.sh`).
+
 ---
 
 ## Troubleshooting
@@ -327,6 +372,7 @@ cd backend && COOLPILOT_PORT=8788 COOLPILOT_CONFIG_DIR=/tmp/coolpilot-conf uv ru
 | Crash history only shows the current boot | the journal isn't persistent: `sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald` |
 | `python3 -m venv` fails (Debian / Ubuntu) | `sudo apt install python3-venv` |
 | GPU crash test does nothing | install `glmark2`; on NVIDIA laptops make sure the NVIDIA driver is loaded (`nvidia-smi`) |
+| Desktop alerts don't appear | Alerts page → *Send a test alert*. It needs a notification daemon (built into GNOME/KDE; mako, dunst or swaync on tiling desktops). Alerts that found no desktop wait up to an hour and show after you log in |
 
 ---
 

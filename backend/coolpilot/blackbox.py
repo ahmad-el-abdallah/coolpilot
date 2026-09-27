@@ -19,7 +19,7 @@ import sqlite3
 import threading
 import time
 
-from . import diag, profiles
+from . import alerts, diag, profiles
 from .hw import gpu, pcie, sensors, sysfs
 
 DATA_DIR = os.environ.get("COOLPILOT_DATA_DIR", "/var/lib/coolpilot")
@@ -205,15 +205,28 @@ def _loop() -> None:
         _error = str(e)
         return
     sampler = Sampler()
+    watcher = alerts.Watcher()
+    try:
+        crashes = crash_events(limit=5)
+        watcher.crash(crashes[0] if crashes else None)
+    except (sqlite3.Error, OSError, ValueError):
+        pass
     last_minute = last_prune = last_crash_check = time.time()
     while not _stop.wait(INTERVAL):
-        if not enabled():
+        recording = enabled()
+        if not recording and not alerts.settings()["enabled"]:
             continue
         try:
             s = sampler.sample()
+            watcher.check(s)  # alerts work even with the recorder switched off
+            now = time.time()
+            if now // 60 != last_minute // 60:
+                alerts.retry_pending()
+            if not recording:
+                last_minute = now
+                continue
             record(con, s)
             _last, _error = s, None
-            now = time.time()
             if now // 60 != last_minute // 60:
                 rollup(con)
                 last_minute = now
