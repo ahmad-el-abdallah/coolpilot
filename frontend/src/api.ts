@@ -80,15 +80,6 @@ export type PcieLink = {
   width: number | null; max_width: number | null; lanes_lost: boolean
   correctable: number; nonfatal: number; fatal: number; breakdown: Record<string, number>
 }
-export type PcieSample = { t: number; area: string; speed: number | null; width: number | null; total: number; delta: number; root_delta: number }
-export type PcieArea = { area: string; seconds: number; errors: number; bursts: number; per_min: number }
-export type PcieWatch = {
-  running: boolean; load: boolean; started: number | null; ends: number | null; area: string | null
-  bdf: string | null; log: string | null; errors_since_start: number; errors_last_min: number
-  samples: PcieSample[]; marks: { t: number; area: string }[]; per_area: PcieArea[]; note?: string | null
-}
-export type PcieState = { available: boolean; links: PcieLink[]; watch: PcieWatch }
-export type PcieBoot = Boot & { gpu_pcie_errors: number }
 
 export type StabilityItem = {
   key: string; enabled: boolean; value: string | number | boolean; recommended: string | number | boolean

@@ -44,7 +44,7 @@ def _tests(crashes: list[dict]) -> list[dict]:
     survived = " ".join(diag.results())
     out = []
     for lg in diag.logs():
-        if lg["test"] not in diag.TESTS:  # e.g. PCIe watch logs
+        if lg["test"] not in diag.TESTS:  # e.g. logs from the old PCIe watch
             continue
         try:
             start = dt.datetime.strptime(lg["name"][:15], "%Y%m%d-%H%M%S")

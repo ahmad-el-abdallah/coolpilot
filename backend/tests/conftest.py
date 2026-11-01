@@ -12,7 +12,6 @@ os.environ["COOLPILOT_TOKEN"] = "test-token"
 os.environ["COOLPILOT_DIST"] = os.path.join(ROOT, "dist")
 os.environ["PATH"] = "/nonexistent"  # no powerprofilesctl / nvidia-smi / lspci / glmark2 in tests
 os.environ["COOLPILOT_DIAG_DIR"] = tempfile.mkdtemp(prefix="coolpilot-diag-")
-os.environ["COOLPILOT_PCIE_INTERVAL"] = "0.05"
 os.environ["COOLPILOT_DATA_DIR"] = tempfile.mkdtemp(prefix="coolpilot-data-")
 
 ARM = "sys/class/firmware-attributes/asus-armoury/attributes"

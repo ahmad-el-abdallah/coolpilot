@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -251,10 +252,33 @@ def cmd(argv: list[str]) -> int:
         return 0
 
     if what == "open":
-        subprocess.Popen(["xdg-open", f"{BASE}/"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _open_app_window(f"{BASE}/")
         return 0
 
     raise CliError(f"unknown command '{what}' (see: coolpilot help)")
+
+
+# Chromium-family browsers that can show a page in its own app window (--app=URL)
+APP_BROWSERS = ["chromium", "google-chrome-stable", "google-chrome", "brave", "brave-browser",
+                "microsoft-edge-stable", "vivaldi-stable", "vivaldi"]
+
+
+def _open_app_window(url: str) -> None:
+    """Open the panel in its own window instead of a tab in a running browser.
+
+    Omarchy: launch it as a web app, or focus the window if it's already open
+    (Chromium names app windows <browser>-127.0.0.1__-<profile>). Elsewhere: any
+    Chromium-family browser with --app, and a normal browser tab as a last resort."""
+    quiet = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "start_new_session": True}
+    host = urllib.parse.urlsplit(url).hostname or "127.0.0.1"
+    if shutil.which("omarchy-launch-or-focus-webapp"):
+        subprocess.Popen(["omarchy-launch-or-focus-webapp", re.escape(host) + "__", url], **quiet)
+        return
+    browser = next((b for b in APP_BROWSERS if shutil.which(b)), None)
+    if browser:
+        subprocess.Popen([browser, f"--app={url}"], **quiet)
+    else:
+        subprocess.Popen(["xdg-open", url], **quiet)
 
 
 def _notify(msg: str, problems: list[str] | None = None) -> None:

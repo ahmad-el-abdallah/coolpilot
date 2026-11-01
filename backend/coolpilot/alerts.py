@@ -300,7 +300,7 @@ class Watcher:
             self.pcie.clear()
             fired.append(fire("pcie_burst", f"{errors} GPU link errors in the last minute",
                               "The CPU ↔ GPU link had to resend corrupted data. Was the laptop moved or pressed? "
-                              "The PCIe page shows details.", now=now))
+                              "The History page shows details.", now=now))
 
         # Stability mode on -> off (not at startup)
         stab = bool(s.get("stability"))

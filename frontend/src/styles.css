@@ -218,18 +218,9 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 10px; }
   .grid2 { grid-template-columns: 1fr; }
 }
 
-/* ---------------------------------------------------------------- PCIe */
-.stats.big .stat-value { font-size: 26px; }
-.error-bars { width: 100%; height: 150px; display: block; margin: 8px 0; }
-.error-bars .axis { stroke: var(--line); }
-.error-bars rect.ok { fill: var(--green); opacity: .5; }
-.error-bars rect.bad { fill: var(--red); }
-.error-bars .mark { stroke: var(--accent); stroke-dasharray: 3 3; }
-.error-bars .mark-label, .error-bars .scale { fill: var(--muted); font-size: 10px; }
+/* ---------------------------------------------------------------- area pad, highlighted rows */
 .laptop .deck button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--panel-2)); }
 .table tr.hot td { background: color-mix(in srgb, var(--red) 10%, transparent); }
-.hbar { display: inline-block; width: 120px; height: 8px; background: var(--panel-2); border-radius: 4px; margin-right: 8px; vertical-align: middle; overflow: hidden; }
-.hbar span { display: block; height: 100%; background: var(--red); border-radius: 4px; }
 
 /* ---------------------------------------------------------------- stability page */
 .stab-hero .hero-body { align-items: flex-start; margin-bottom: 14px; }

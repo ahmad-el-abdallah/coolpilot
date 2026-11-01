@@ -27,7 +27,7 @@ RECOMMENDED: dict[str, object] = {
 # settings whose allowed range changes between charger and battery: stored values
 # may be outside today's range (they're clamped when applied) or MIN
 POWER_DEPENDENT = {"ppt_pl1", "ppt_pl2", "ppt_pl3", "gpu_dynamic_boost", "gpu_temp_target"}
-FANS_RECOMMENDED = {"enabled": False, "preset": "stability"}
+FANS_RECOMMENDED = {"enabled": True, "preset": "stability"}
 FILE = "stability.json"
 # page sections; each can be switched as a whole between factory Default and Stability
 SECTIONS: dict[str, list[str]] = {

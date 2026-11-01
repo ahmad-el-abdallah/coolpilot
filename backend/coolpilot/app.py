@@ -318,34 +318,6 @@ def create_app(token: str | None = None) -> Flask:
     def api_diag_crashes():
         return jsonify({"boots": diag.crash_history(), "now": time.time()})
 
-    # ------------------------------------------------------------------ PCIe link health
-    @app.get("/api/pcie")
-    def api_pcie():
-        return jsonify({"available": pcie.available(), "links": pcie.links(), "watch": pcie.status()})
-
-    @app.post("/api/pcie/watch/start")
-    def api_pcie_start():
-        body = request.get_json(silent=True) or {}
-        try:
-            return jsonify(pcie.start(bool(body.get("load", True)), int(body.get("minutes", 30))))
-        except (RuntimeError, ValueError, TypeError) as e:
-            return _err(str(e))
-
-    @app.post("/api/pcie/watch/stop")
-    def api_pcie_stop():
-        return jsonify(pcie.stop())
-
-    @app.post("/api/pcie/watch/mark")
-    def api_pcie_mark():
-        try:
-            return jsonify(pcie.mark(str((request.get_json(silent=True) or {}).get("area"))))
-        except RuntimeError as e:
-            return _err(str(e))
-
-    @app.get("/api/pcie/history")
-    def api_pcie_history():
-        return jsonify({"boots": pcie.history()})
-
     # ------------------------------------------------------------------ charge to 100% once
     @app.get("/api/battery/full-once")
     def api_full_once():

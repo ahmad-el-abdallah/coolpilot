@@ -153,7 +153,7 @@ def test_sensors(client):
     assert s["profile"] == "balanced"
 
 
-# ----------------------------------------------------------------- PCIe link health
+# ----------------------------------------------------------------- PCIe link readings
 GPU_AER = "sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/aer_dev_correctable"
 
 
@@ -162,51 +162,19 @@ def _set_gpu_errors(n):
     w(GPU_AER, f"RxErr 0\nBadTLP {n}\nTOTAL_ERR_COR {n}")
 
 
-def test_pcie_links(client):
+def test_pcie_links():
+    from coolpilot.hw import pcie
     _set_gpu_errors(42)
-    d = client.get("/api/pcie").get_json()
-    assert d["available"] is True
-    links = {link["bdf"]: link for link in d["links"]}
+    assert pcie.available() is True
+    all_links = pcie.links()
+    links = {link["bdf"]: link for link in all_links}
     gpu = links["0000:01:00.0"]
     assert gpu["label"] == "NVIDIA GPU" and gpu["correctable"] == 42
     assert gpu["breakdown"] == {"BadTLP": 42}
     assert gpu["gen"] == 4 and gpu["width"] == 8 and gpu["lanes_lost"] is False
     assert links["0000:00:01.1"]["label"] == "CPU root port → NVIDIA GPU"
     assert links["0000:04:00.0"]["label"] == "NVMe SSD"
-    assert d["links"][0]["bdf"] in ("0000:00:01.1", "0000:01:00.0")  # GPU chain listed first
-
-
-def test_pcie_watch_counts_errors_per_area(client):
-    import time
-    _set_gpu_errors(100)
-    r = client.post("/api/pcie/watch/start", json={"load": False, "minutes": 1})
-    assert r.status_code == 200 and r.get_json()["running"] is True
-    time.sleep(0.2)
-    assert client.post("/api/pcie/watch/mark", json={"area": "3"}).get_json()["area"] == "top-right"
-    time.sleep(0.1)
-    _set_gpu_errors(130)  # 30 new errors while pressing top-right
-    time.sleep(0.3)
-    st = client.post("/api/pcie/watch/stop").get_json()
-    assert st["running"] is False
-    assert st["errors_since_start"] == 30
-    areas = {a["area"]: a for a in st["per_area"]}
-    assert areas["top-right"]["errors"] == 30
-    assert areas["baseline"]["errors"] == 0
-    assert st["per_area"][0]["area"] == "top-right"  # worst area first
-    import os
-    from coolpilot import diag
-    with open(os.path.join(diag.LOGS, st["log"])) as f:
-        log = f.read()
-    assert "now pressing: top-right" in log and "+30" in log
-
-
-def test_pcie_mark_needs_running_watch(client):
-    assert client.post("/api/pcie/watch/mark", json={"area": "1"}).status_code == 400
-    r = client.post("/api/pcie/watch/start", json={"load": False, "minutes": 1})
-    assert client.post("/api/pcie/watch/mark", json={"area": "x"}).status_code == 400
-    assert client.post("/api/pcie/watch/start", json={"load": False}).status_code == 400  # already running
-    client.post("/api/pcie/watch/stop")
-    assert r.status_code == 200
+    assert all_links[0]["bdf"] in ("0000:00:01.1", "0000:01:00.0")  # GPU chain listed first
 
 
 # ----------------------------------------------------------------- battery limits (firmware swaps ranges)
@@ -321,6 +289,16 @@ def test_stability_survives_manual_change_and_off_restores_only_managed(client):
     assert _state(client)["on"] is False
 
 
+def test_stability_switches_fans_by_default(client):
+    from coolpilot.hw import fans
+    client.post("/api/stability", json={"enabled": True})
+    assert read("sys/class/hwmon/hwmon9/pwm1_enable") == "1"
+    assert read("sys/class/hwmon/hwmon9/pwm1_auto_point1_pwm") == str(fans.PRESETS["stability"][0][1])
+    assert _state(client)["fans"]["status"] == "applied"
+    client.post("/api/stability", json={"enabled": False})
+    assert read("sys/class/hwmon/hwmon9/pwm1_enable") == "2"  # back to the Fans page mode (Default)
+
+
 def test_stability_fan_option(client):
     from coolpilot.hw import fans
     client.post("/api/stability/config", json={"fans": {"enabled": True, "preset": "cool"}})
@@ -348,7 +326,7 @@ def test_stability_config_validation(client):
 def test_stability_boot_toggle_and_counts(client):
     st = client.post("/api/stability/boot", json={"enabled": True}).get_json()
     assert st["boot"] is True
-    assert st["enabled_count"] == st["total_count"] - 1  # fans option off by default
+    assert st["enabled_count"] == st["total_count"]  # everything on by default, fans included
     assert client.post("/api/stability/boot", json={"enabled": False}).get_json()["boot"] is False
 
 
@@ -422,6 +400,23 @@ def test_stability_mode_fan_option_wins_then_hands_back(client):
     assert read(f"{HW}/pwm1_auto_point1_pwm") == str(fans.PRESETS["max"][0][1])
     client.post("/api/stability", json={"enabled": False})
     assert read(f"{HW}/pwm1_enable") == "2"  # back to the Fans page choice (default)
+
+
+def test_factory_defaults_match_the_os_boot_values(client, monkeypatch):
+    """Factory defaults puts EPP and the minimum clock back where the OS leaves them at boot."""
+    from conftest import w
+    from coolpilot.hw import sysfs
+    for c in sysfs.glob_rel("sys/devices/system/cpu/cpu*/cpufreq"):
+        w(f"{c}/amd_pstate_lowest_nonlinear_freq", 1105800)
+    assert sysfs.SETTINGS["cpu_min_mhz"].default() == 1105
+    assert sysfs.SETTINGS["epp"].default() == "balance_performance"  # no power-profiles-daemon
+    monkeypatch.setattr(sysfs.shutil, "which", lambda name: "/usr/bin/" + name)
+    cases = [("balanced", 0, "balance_power"), ("balanced", 1, "balance_performance"),
+             ("performance", 1, "performance"), ("quiet", 0, "power")]
+    for prof, ac, epp in cases:
+        w("sys/firmware/acpi/platform_profile", prof)
+        w("sys/class/power_supply/ACAD/online", ac)
+        assert sysfs.SETTINGS["epp"].default() == epp, (prof, ac)
 
 
 def test_factory_reset_everything(client):

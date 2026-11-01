@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import glob
 import os
+import shutil
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -242,6 +243,25 @@ def _min_freq_khz() -> int | None:
     return read_int(f"{CPUFREQ}/cpu0/cpufreq/cpuinfo_min_freq")
 
 
+def _default_min_freq_khz() -> int | None:
+    # amd-pstate starts the minimum at the lowest efficient clock, not the absolute floor
+    return read_int(f"{CPUFREQ}/cpu0/cpufreq/amd_pstate_lowest_nonlinear_freq") or _min_freq_khz()
+
+
+def _default_epp() -> str:
+    """The energy preference the OS picks for the current performance mode.
+    power-profiles-daemon sets it with every mode (and uses balance_power for
+    Balanced on battery); without it the kernel's boot value stays."""
+    if not shutil.which("powerprofilesctl"):
+        return "balance_performance"
+    prof = read("sys/firmware/acpi/platform_profile") or "balanced"
+    if prof in ("performance", "balanced-performance"):
+        return "performance"
+    if prof in ("quiet", "low-power", "cool"):
+        return "power"
+    return "balance_performance" if on_ac() else "balance_power"
+
+
 def _led(rel_fn: Callable[[], str | None], attr: str) -> Callable[[], list[str]]:
     def f():
         base = rel_fn()
@@ -266,7 +286,7 @@ SETTINGS: dict[str, Setting] = {s.key: s for s in [
         choices=lambda: [c for c in (read(f"{CPUFREQ}/cpu0/cpufreq/energy_performance_available_preferences") or "").split() if c != "custom"],
         help="Hint to the CPU on how aggressively to raise clocks. 'power' saves most energy/heat.",
         keywords=["epp", "energy", "efficiency", "power saving", "battery"],
-        default=lambda: "balance_performance"),
+        default=_default_epp),
     Setting(
         key="cpu_boost", label="CPU boost", group="cpu", kind="bool",
         # per-CPU files first: they are what actually applies (the global file can
@@ -292,7 +312,7 @@ SETTINGS: dict[str, Setting] = {s.key: s for s in [
         paths=lambda: cpu_policies("scaling_min_freq"),
         min=lambda: (_min_freq_khz() or 400000) // 1000,
         max=lambda: (_max_freq_khz() or 3100000) // 1000,
-        default=lambda: (_min_freq_khz() or 400000) // 1000,
+        default=lambda: (_default_min_freq_khz() or 400000) // 1000,
         to_raw=lambda mhz: str(int(mhz) * 1000), from_raw=lambda raw: int(raw) // 1000,
         help="Lowest clock the CPU may idle at. Leave at minimum normally.",
         keywords=["ghz", "mhz", "frequency", "idle"]),

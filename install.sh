@@ -198,9 +198,8 @@ systemctl restart coolpilot.service
 
 echo "==> Crash-test scripts in $USER_HOME/crashdiag (logs there are left alone)"
 runuser -u "$USER_NAME" -- mkdir -p "$USER_HOME/crashdiag/logs"
-for f in crashdiag.sh pcie-watch.sh; do
-  install -m 755 -o "$USER_NAME" -g "$USER_GROUP" "$SRC/crashdiag/$f" "$USER_HOME/crashdiag/$f"
-done
+install -m 755 -o "$USER_NAME" -g "$USER_GROUP" "$SRC/crashdiag/crashdiag.sh" "$USER_HOME/crashdiag/crashdiag.sh"
+rm -f "$USER_HOME/crashdiag/pcie-watch.sh"   # removed in a later version
 
 echo "==> App launcher entry + icon"
 APPS="$USER_HOME/.local/share/applications"
@@ -220,7 +219,7 @@ else
 [Desktop Entry]
 Name=CoolPilot
 Comment=Fans, power, CPU frequency and crash diagnostics for your laptop
-Exec=xdg-open http://127.0.0.1:$PORT
+Exec=/usr/local/bin/coolpilot open
 Icon=coolpilot
 Terminal=false
 Type=Application

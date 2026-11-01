@@ -9,7 +9,6 @@ import { Diagnostics } from './pages/Diagnostics'
 import { Fans } from './pages/Fans'
 import { Gpu } from './pages/Gpu'
 import { History } from './pages/History'
-import { Pcie } from './pages/Pcie'
 import { Power } from './pages/Power'
 import { Profiles } from './pages/Profiles'
 import { Report } from './pages/Report'
@@ -42,7 +41,6 @@ const PAGES = [
   { id: 'history', label: 'History & black box', icon: '◷', keywords: 'history chart graph black box recorder crash timeline temperature over time' },
   { id: 'report', label: 'Repair report', icon: '▤', keywords: 'repair report warranty service center pdf print export evidence' },
   { id: 'diagnostics', label: 'Crash diagnostics', icon: '⚠', keywords: 'crash freeze test stress log report history' },
-  { id: 'pcie', label: 'PCIe link health', icon: '⇄', keywords: 'pcie gpu link errors aer badtlp lanes solder balls bga press test watch' },
   { id: 'system', label: 'System & warranty', icon: 'ⓘ', keywords: 'serial bios warranty info model' },
 ] as const
 type PageId = (typeof PAGES)[number]['id']
@@ -158,7 +156,6 @@ export default function App() {
     action('a-alerts-on', 'Turn desktop alerts on', 'notifications enable', () => api.post('/alerts', { enabled: true }), 'Desktop alerts on')
     action('a-alerts-off', 'Turn desktop alerts off', 'notifications disable mute silence', () => api.post('/alerts', { enabled: false }), 'Desktop alerts off')
     items.push({ id: 'crash-test', title: 'Run a crash test', hint: 'Diagnostics', keywords: 'stress test freeze cpu ram gpu', run: () => go('diagnostics') })
-    items.push({ id: 'pcie-watch', title: 'GPU link press test (PCIe errors)', hint: 'PCIe link health', keywords: 'solder balls bga weak spot press pcie errors', run: () => go('pcie') })
     return items
   }, [settings, go, toast, refresh])
 
@@ -195,7 +192,6 @@ export default function App() {
             {page === 'history' && <History />}
             {page === 'report' && <Report />}
             {page === 'diagnostics' && <Diagnostics />}
-            {page === 'pcie' && <Pcie />}
             {page === 'system' && <System />}
           </main>
         </div>
