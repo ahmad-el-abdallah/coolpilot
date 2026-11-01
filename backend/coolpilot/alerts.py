@@ -1,5 +1,4 @@
-"""Desktop alerts: CPU too hot, a burst of PCIe link errors, Stability mode
-switched off, and "the laptop froze or restarted" after a crash.
+"""Desktop alerts: CPU too hot, Stability mode switched off, and "the laptop froze or restarted" after a crash.
 
 The black box calls check() with every reading. Alerts go to every logged-in
 desktop user as a normal notification, and are kept in a short list the web app
@@ -13,7 +12,6 @@ GNOME, KDE, mako, dunst, swaync, etc. implement.
 """
 from __future__ import annotations
 
-import collections
 import os
 import pwd
 import shutil
@@ -33,12 +31,6 @@ KINDS: dict[str, dict] = {
         "label": "CPU too hot",
         "help": "When the CPU stays at or above this temperature for a few seconds.",
         "threshold": 90, "min": 70, "max": 105, "unit": "°C", "cooldown": 600,
-    },
-    "pcie_burst": {
-        "label": "Burst of GPU link errors",
-        "help": "When the CPU ↔ GPU PCIe link has this many corrected errors within one minute. "
-                "Bursts often come with moving or pressing the laptop, and can mean the fault is getting worse.",
-        "threshold": 100, "min": 5, "max": 5000, "unit": "errors/min", "cooldown": 900,
     },
     "stability_off": {
         "label": "Stability mode switched off",
@@ -265,7 +257,6 @@ class Watcher:
         self.hot_run = 0
         self.hot_armed = True
         self.last: dict[str, float] = {}
-        self.pcie: collections.deque[tuple[float, int]] = collections.deque()
         self.stability: bool | None = None
 
     def _cooled(self, kind: str, now: float) -> bool:
@@ -289,18 +280,6 @@ class Watcher:
                 fired.append(fire("cpu_hot", f"CPU is very hot: {round(temp)}°C",
                                   "Put the laptop on a hard, flat surface and let it cool down. "
                                   "Stability mode or Silent mode lower the heat.", critical=True, now=now))
-
-        # PCIe error burst: corrected errors on the GPU link within the last minute
-        self.pcie.append((now, int(s.get("pcie_new") or 0)))
-        while self.pcie and now - self.pcie[0][0] > 60:
-            self.pcie.popleft()
-        errors = sum(n for _, n in self.pcie)
-        if on("pcie_burst") and errors >= cfg["items"]["pcie_burst"]["threshold"] and self._cooled("pcie_burst", now):
-            self.last["pcie_burst"] = now
-            self.pcie.clear()
-            fired.append(fire("pcie_burst", f"{errors} GPU link errors in the last minute",
-                              "The CPU ↔ GPU link had to resend corrupted data. Was the laptop moved or pressed? "
-                              "The History page shows details.", now=now))
 
         # Stability mode on -> off (not at startup)
         stab = bool(s.get("stability"))

@@ -37,7 +37,7 @@ const PAGES = [
   { id: 'gpu', label: 'GPU', icon: '▣', keywords: 'nvidia rtx graphics' },
   { id: 'battery', label: 'Battery & Display', icon: '▭', keywords: 'charge limit brightness keyboard backlight screen' },
   { id: 'profiles', label: 'Profiles & backup', icon: '☰', keywords: 'save preset boot startup backup restore export import file reinstall' },
-  { id: 'alerts', label: 'Alerts', icon: <BellIcon />, keywords: 'alerts notifications notify desktop popup warning hot temperature pcie errors crash' },
+  { id: 'alerts', label: 'Alerts', icon: <BellIcon />, keywords: 'alerts notifications notify desktop popup warning hot temperature crash' },
   { id: 'history', label: 'History & black box', icon: '◷', keywords: 'history chart graph black box recorder crash timeline temperature over time' },
   { id: 'report', label: 'Repair report', icon: '▤', keywords: 'repair report warranty service center pdf print export evidence' },
   { id: 'diagnostics', label: 'Crash diagnostics', icon: '⚠', keywords: 'crash freeze test stress log report history' },

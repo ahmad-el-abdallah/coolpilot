@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type CrashEvent, type PcieLink } from '../api'
+import { api, type CrashEvent } from '../api'
 import { fmtDateTime } from '../components/Charts'
 import { Button, Card, Segmented } from '../components/ui'
 import { usePoll, useToast } from '../hooks'
@@ -13,7 +13,6 @@ type ReportData = {
   summary: { sessions: number; crashes: number; excluded: number; first_crash: number | null; last_crash: number | null; recorded_crashes: number; stability_on: boolean; blackbox_since: number | null }
   crashes: CrashEvent[]
   excluded: { boot: string; end: number; minutes: number }[]
-  pcie: { gpu_link: PcieLink | null; other_links: { label: string; correctable: number; fatal: number }[]; per_session: { start: number; ending: string; errors: number }[] }
   machine_checks: { checked: boolean; count: number; examples: string[] }
   tests: { test: string; start: number; end: number; seconds: number; marks: number; result: 'crashed' | 'survived' | 'stopped' }[]
 }
@@ -72,9 +71,7 @@ export function Report() {
 
   if (!r) return <div className="page"><Card><p className="muted">Collecting the report…</p></Card></div>
   const s = r.summary
-  const g = r.pcie.gpu_link
   const title = `Repair report - ${r.device.name}`
-  const errSessions = r.pcie.per_session.filter((b) => b.errors > 0)
   const recorded = r.crashes.filter((c) => c.recorded)
   const coolAtCrash = recorded.length > 0 &&
     recorded.every((c) => (c.summary.cpu_temp_max ?? 0) < 90 && (c.summary.gpu_temp_max ?? 0) < 87)
@@ -126,7 +123,6 @@ export function Report() {
           <div className="kpi"><small className="muted">First crash</small><b>{s.first_crash ? date(s.first_crash) : '—'}</b></div>
           <div className="kpi"><small className="muted">Last crash</small><b>{s.last_crash ? date(s.last_crash) : '—'}</b></div>
           <div className="kpi"><small className="muted">CPU hardware errors (MCE)</small><b>{r.machine_checks.checked ? r.machine_checks.count : '?'}</b></div>
-          {g && <div className="kpi"><small className="muted">GPU link errors (this boot)</small><b className={g.correctable > 100 ? 'bad' : undefined}>{g.correctable.toLocaleString()}</b></div>}
         </div>
         <p>
           A “crash” is a session that ended without a normal shutdown: the system log stops abruptly (freeze
@@ -136,7 +132,7 @@ export function Report() {
         <h2>Crash timeline</h2>
         {r.crashes.length ? (
           <table>
-            <thead><tr><th>When</th><th>After</th><th>CPU peak</th><th>CPU load</th><th>GPU peak</th><th>Power</th><th>New GPU link errors</th><th className="no-print" /></tr></thead>
+            <thead><tr><th>When</th><th>After</th><th>CPU peak</th><th>CPU load</th><th>GPU peak</th><th>Power</th><th className="no-print" /></tr></thead>
             <tbody>
               {r.crashes.map((c) => (
                 <tr key={c.boot}>
@@ -148,9 +144,8 @@ export function Report() {
                       <td>{c.summary.cpu_usage_avg != null ? `${Math.round(c.summary.cpu_usage_avg)}%` : '—'}</td>
                       <td>{c.summary.gpu_temp_max != null ? `${Math.round(c.summary.gpu_temp_max)}°C` : '—'}</td>
                       <td>{c.summary.ac ? 'charger' : 'battery'}</td>
-                      <td>{c.summary.pcie_err_delta ?? 0}</td>
                     </>
-                  ) : <td colSpan={5} className="muted">not recorded (before monitoring started)</td>}
+                  ) : <td colSpan={4} className="muted">not recorded (before monitoring started)</td>}
                   <td className="no-print">
                     <button type="button" className="link" title="I turned it off on purpose (held the power button, etc.)"
                       onClick={() => exclude(c.boot, true)}>Not a fault</button>
@@ -183,28 +178,6 @@ export function Report() {
             written to disk).{coolAtCrash && ' In every recorded crash the CPU stayed below 90 °C and the GPU below 87 °C, i.e. the machine was not overheating when it stopped.'}
           </p>
         )}
-
-        <h2>CPU ↔ GPU PCIe link</h2>
-        {g ? (
-          <>
-            <p>
-              Link: PCIe Gen{g.gen ?? '?'} ×{g.width} (max Gen{g.max_gen ?? '?'} ×{g.max_width}){g.lanes_lost ? <b className="bad"> — lanes lost</b> : ''}.
-              Corrected errors since this boot: <b className={g.correctable > 100 ? 'bad' : undefined}>{g.correctable.toLocaleString()}</b>
-              {Object.keys(g.breakdown).length ? ` (${Object.entries(g.breakdown).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''};
-              non-fatal {g.nonfatal}, fatal {g.fatal}.
-            </p>
-            <p className="muted">
-              Other PCIe links for comparison: {r.pcie.other_links.map((l) => `${l.label} ${l.correctable}`).join(' · ') || 'none'}.
-              Corrected errors mean data arrived corrupted and had to be resent — a healthy link shows close to zero.
-            </p>
-            {errSessions.length > 0 && (
-              <table>
-                <thead><tr><th>Session start</th><th>GPU link errors logged</th><th>Ended</th></tr></thead>
-                <tbody>{errSessions.map((b) => <tr key={b.start}><td>{fmtDateTime(b.start)}</td><td>{b.errors}</td><td>{b.ending}</td></tr>)}</tbody>
-              </table>
-            )}
-          </>
-        ) : <p className="muted">No discrete GPU link found.</p>}
 
         <h2>CPU hardware errors (machine checks)</h2>
         <p>

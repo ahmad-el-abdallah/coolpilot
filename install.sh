@@ -47,12 +47,12 @@ hint() {  # hint <what> : distro-specific install command
     debian:python) echo "sudo apt install python3 python3-venv" ;;
     fedora:python) echo "sudo dnf install python3" ;;
     suse:python)   echo "sudo zypper install python311" ;;
-    arch:tools)    echo "sudo pacman -S --needed stress-ng glmark2 pciutils" ;;
-    debian:tools)  echo "sudo apt install stress-ng glmark2 pciutils" ;;
-    fedora:tools)  echo "sudo dnf install stress-ng glmark2 pciutils" ;;
-    suse:tools)    echo "sudo zypper install stress-ng glmark2 pciutils" ;;
+    arch:tools)    echo "sudo pacman -S --needed stress-ng glmark2" ;;
+    debian:tools)  echo "sudo apt install stress-ng glmark2" ;;
+    fedora:tools)  echo "sudo dnf install stress-ng glmark2" ;;
+    suse:tools)    echo "sudo zypper install stress-ng glmark2" ;;
     *:python)      echo "install Python 3.9+ with the venv module" ;;
-    *:tools)       echo "install stress-ng, glmark2 and pciutils with your package manager" ;;
+    *:tools)       echo "install stress-ng and glmark2 with your package manager" ;;
   esac
 }
 
@@ -112,8 +112,8 @@ if [[ ! -d /sys/devices/platform/asus-nb-wmi ]]; then warn "asus-nb-wmi not load
 
 # ------------------------------------------------------------------ optional tools
 missing=()
-for t in stress-ng glmark2 lspci; do command -v "$t" >/dev/null || missing+=("$t"); done
-if ((${#missing[@]})); then warn "optional, for crash tests: ${missing[*]}  →  $(hint tools)"; else ok "crash-test tools (stress-ng, glmark2, lspci)"; fi
+for t in stress-ng glmark2; do command -v "$t" >/dev/null || missing+=("$t"); done
+if ((${#missing[@]})); then warn "optional, for crash tests: ${missing[*]}  →  $(hint tools)"; else ok "crash-test tools (stress-ng, glmark2)"; fi
 command -v powerprofilesctl >/dev/null && ok "powerprofilesctl" || warn "powerprofilesctl not found — performance mode is written directly"
 
 # ------------------------------------------------------------------ conflicting tools

@@ -158,7 +158,8 @@ def _preferences(data, warn: list[str]) -> dict:
     if isinstance(data.get("alerts"), dict):
         try:
             a = data["alerts"]
-            out["alerts"] = alerts.normalize({"enabled": a.get("enabled", True), "items": a.get("items") or {}})
+            items = {k: v for k, v in (a.get("items") or {}).items() if k in alerts.KINDS}  # drop removed alerts
+            out["alerts"] = alerts.normalize({"enabled": a.get("enabled", True), "items": items})
         except ValueError as e:
             warn.append(f"alerts skipped ({e})")
     w = data.get("warranty")

@@ -74,12 +74,6 @@ export const api = {
   del: <T,>(path: string) => call<T>('DELETE', path),
 }
 
-export type PcieLink = {
-  bdf: string; label: string; name: string; parent: string | null
-  speed: number | null; max_speed: number | null; gen: number | null; max_gen: number | null
-  width: number | null; max_width: number | null; lanes_lost: boolean
-  correctable: number; nonfatal: number; fatal: number; breakdown: Record<string, number>
-}
 
 export type StabilityItem = {
   key: string; enabled: boolean; value: string | number | boolean; recommended: string | number | boolean
@@ -100,7 +94,7 @@ export type StabilityResult = { results: Record<string, string>; state: Stabilit
 
 export type HistoryPoint = {
   t: number; cpu: number | null; cpu_max: number | null; gpu: number | null; gpu_max: number | null
-  usage: number | null; bat_w: number | null; fan: number | null; pcie: number | null
+  usage: number | null; bat_w: number | null; fan: number | null
   ac: number | null; stab: number | null; n: number
 }
 export type HistoryData = {
@@ -111,13 +105,13 @@ export type CrashSummary = {
   seconds?: number; last_ts?: number; gap_to_end?: number | null
   cpu_temp_last?: number | null; cpu_temp_max?: number | null; cpu_usage_avg?: number | null; cpu_mhz_last?: number | null
   gpu_temp_max?: number | null; gpu_state?: string | null; ssd_temp_max?: number | null; ram_temp_max?: number | null
-  bat_w_last?: number | null; ac?: boolean; profile?: string | null; stability?: boolean; pcie_err_delta?: number
+  bat_w_last?: number | null; ac?: boolean; profile?: string | null; stability?: boolean
 }
 export type CrashEvent = { boot: string; start: number; end: number; minutes: number; recorded: boolean; summary: CrashSummary }
 export type BlackboxSample = {
   ts: number; cpu_temp: number | null; cpu_mhz: number | null; cpu_usage: number | null; load1: number | null
   gpu_temp: number | null; gpu_w: number | null; fan1: number | null; fan2: number | null
-  bat_w: number | null; ac: number; pcie_err: number | null; pcie_new: number | null; stability: number
+  bat_w: number | null; ac: number; stability: number
 }
 export type BlackboxStatus = {
   enabled: boolean; interval: number; running: boolean; error: string | null; db_bytes: number
@@ -130,7 +124,7 @@ export type FullOnce = {
 }
 
 export type AlertItem = {
-  kind: 'cpu_hot' | 'pcie_burst' | 'stability_off' | 'crash'
+  kind: 'cpu_hot' | 'stability_off' | 'crash'
   label: string; help: string; enabled: boolean
   threshold?: number; min?: number; max?: number; unit?: string
 }

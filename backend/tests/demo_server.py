@@ -42,7 +42,6 @@ def fake_hardware() -> None:
     w("sys/class/power_supply/BAT1/capacity", 80)
     w("sys/class/power_supply/BAT1/status", "Not charging")
     w(f"{GPU}/power/runtime_status", "active")
-    w(f"{GPU}/aer_dev_correctable", "RxErr 0\nBadTLP 1243\nTOTAL_ERR_COR 1243")
     w(f"{ARM}/nv_dynamic_boost/min_value", 5)
     w("sys/class/power_supply/BAT1/power_now", 0)
     w("proc/cpuinfo", "processor\t: 0\nmodel name\t: AMD Ryzen 7 7435HS\n")
@@ -102,26 +101,24 @@ def fake_blackbox() -> None:
         stab = 1 if b["start"] >= STAB_FROM else 0
         for m in range(int(b["start"] // 60 * 60), int(b["end"]), 60):
             cpu, g = temp_at(m)
-            errs = rnd.choice([0] * 30 + [2, 4, 9]) + (rnd.randint(40, 260) if not stab and rnd.random() < 0.02 else 0)
             rows.append((m, b["boot_id"], 30, cpu, cpu + rnd.uniform(1, 6), g, g + rnd.uniform(1, 4),
                          rnd.uniform(8, 45) if not stab else rnd.uniform(5, 25), rnd.uniform(18, 34) if not stab else rnd.uniform(9, 16),
-                         (3600 if not stab else 2900) + rnd.uniform(-300, 300), errs, 1, stab,
+                         (3600 if not stab else 2900) + rnd.uniform(-300, 300), 1, stab,
                          "quiet" if stab else "performance"))
-    con.executemany("INSERT OR REPLACE INTO minutes VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    con.executemany("INSERT OR REPLACE INTO minutes VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
     # the last two minutes before each crash, every 2 s
     for b in sessions:
         if b["ending"] != "crash":
             continue
         samples = []
-        per_reading = rnd.randint(2, 14)
         for k in range(60):
             ts = b["end"] - 120 + k * 2
             cpu, g = temp_at(ts)
             samples.append({"ts": ts, "boot": b["boot_id"], "cpu_temp": cpu + k * 0.1, "cpu_mhz": 4100 + rnd.randint(-300, 300),
                             "cpu_usage": rnd.uniform(40, 90), "load1": 6.5, "gpu_temp": g, "gpu_w": rnd.uniform(40, 90),
                             "gpu_state": "active", "ssd_temp": 48.0, "ram_temp": 55.0, "fan1": 4200, "fan2": 4100,
-                            "bat_w": 25.0, "bat_v": 16.4, "bat_pct": 100, "ac": 1, "pcie_err": 900 + k * per_reading,
-                            "pcie_new": per_reading, "profile": "performance", "stability": 0})
+                            "bat_w": 25.0, "bat_v": 16.4, "bat_pct": 100, "ac": 1,
+                            "profile": "performance", "stability": 0})
         con.execute("INSERT OR REPLACE INTO crashes VALUES (?,?,?,?)", (b["boot_id"], b["start"], b["end"], json.dumps(samples)))
     # the last 3 hours of raw readings (what the recorder keeps for 3 days)
     rows = []
@@ -131,7 +128,7 @@ def fake_blackbox() -> None:
         rows.append({"ts": ts, "boot": "0" * 32, "cpu_temp": cpu, "cpu_mhz": 2700, "cpu_usage": 12.0,
                      "load1": 0.8, "gpu_temp": g, "gpu_w": 11.0, "gpu_state": "active", "ssd_temp": 42.0,
                      "ram_temp": 47.0, "fan1": 2900, "fan2": 2750, "bat_w": 0.0, "bat_v": 16.9,
-                     "bat_pct": 80, "ac": 1, "pcie_err": 1243, "pcie_new": 0, "profile": "quiet", "stability": 1})
+                     "bat_pct": 80, "ac": 1, "profile": "quiet", "stability": 1})
     con.executemany(f"INSERT INTO samples VALUES ({', '.join('?' * len(blackbox.COLS))})",
                     [[r[c] for c in blackbox.COLS] for r in rows])
     con.commit()
@@ -148,8 +145,6 @@ def fake_settings() -> None:
                                            "No error message; the screen stops and it reboots after a few seconds.")
     now = time.time()
     profiles.update_config(alerts_recent=[
-        {"id": "a1", "kind": "pcie_burst", "ts": now - 2 * 3600, "title": "126 GPU link errors in the last minute",
-         "body": "The CPU ↔ GPU link had to resend corrupted data. Was the laptop moved or pressed?", "critical": False, "sent": now},
         {"id": "a2", "kind": "cpu_hot", "ts": now - 3 * DAY, "title": "CPU is very hot: 92°C",
          "body": "Put the laptop on a hard, flat surface and let it cool down.", "critical": True, "sent": now},
         {"id": "a3", "kind": "crash", "ts": STAB_FROM - DAY * 1.4, "title": "The laptop froze or restarted",

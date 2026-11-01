@@ -1,29 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api, type AlertItem, type AlertsState } from '../api'
 import { Badge, Button, Card, Slider, Toggle } from '../components/ui'
 import { usePoll, useToast } from '../hooks'
 
 const when = (ts: number) => new Date(ts * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-
-/** Number box that saves on Enter or when it loses focus. */
-function NumberBox({ value, min, max, unit, disabled, onCommit }: {
-  value: number; min: number; max: number; unit?: string; disabled?: boolean; onCommit: (v: number) => void
-}) {
-  const [text, setText] = useState(String(value))
-  useEffect(() => setText(String(value)), [value])
-  const commit = () => {
-    const v = Math.round(Number(text))
-    if (!Number.isFinite(v) || v < min || v > max) { setText(String(value)); return }
-    if (v !== value) onCommit(v)
-  }
-  return (
-    <span className="inline">
-      <input type="number" min={min} max={max} value={text} disabled={disabled} style={{ width: 96 }}
-        onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
-      {unit}
-    </span>
-  )
-}
 
 export function Alerts() {
   const { data, setData } = usePoll<AlertsState>('/alerts', 15000)
@@ -87,10 +67,6 @@ export function Alerts() {
                   <Slider value={it.threshold} min={it.min!} max={it.max!} marks={[85, 90, 95]} disabled={!data.enabled || !it.enabled}
                     format={(v) => `${v}°C`} onCommit={(v) => setItem(it, { threshold: v }, `Alert when the CPU reaches ${v}°C`)} />
                 </div>
-              )}
-              {it.kind === 'pcie_burst' && it.threshold !== undefined && (
-                <NumberBox value={it.threshold} min={it.min!} max={it.max!} unit={it.unit} disabled={!data.enabled || !it.enabled}
-                  onCommit={(v) => setItem(it, { threshold: v }, `Alert at ${v} GPU link errors per minute`)} />
               )}
               <Toggle checked={it.enabled} disabled={!data.enabled} label={it.label}
                 onChange={(v) => setItem(it, { enabled: v }, `${it.label}: alert ${v ? 'on' : 'off'}`)} />

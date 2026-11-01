@@ -153,30 +153,6 @@ def test_sensors(client):
     assert s["profile"] == "balanced"
 
 
-# ----------------------------------------------------------------- PCIe link readings
-GPU_AER = "sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/aer_dev_correctable"
-
-
-def _set_gpu_errors(n):
-    from conftest import w
-    w(GPU_AER, f"RxErr 0\nBadTLP {n}\nTOTAL_ERR_COR {n}")
-
-
-def test_pcie_links():
-    from coolpilot.hw import pcie
-    _set_gpu_errors(42)
-    assert pcie.available() is True
-    all_links = pcie.links()
-    links = {link["bdf"]: link for link in all_links}
-    gpu = links["0000:01:00.0"]
-    assert gpu["label"] == "NVIDIA GPU" and gpu["correctable"] == 42
-    assert gpu["breakdown"] == {"BadTLP": 42}
-    assert gpu["gen"] == 4 and gpu["width"] == 8 and gpu["lanes_lost"] is False
-    assert links["0000:00:01.1"]["label"] == "CPU root port → NVIDIA GPU"
-    assert links["0000:04:00.0"]["label"] == "NVMe SSD"
-    assert all_links[0]["bdf"] in ("0000:00:01.1", "0000:01:00.0")  # GPU chain listed first
-
-
 # ----------------------------------------------------------------- battery limits (firmware swaps ranges)
 def _on_battery_limits():
     from conftest import w
@@ -610,7 +586,7 @@ def _row(ts, boot, **kw):
     base = {"ts": ts, "boot": boot, "cpu_temp": 60.0, "cpu_mhz": 2500, "cpu_usage": 50.0, "load1": 4.0,
             "gpu_temp": 50.0, "gpu_w": 10.0, "gpu_state": "active", "ssd_temp": 40.0, "ram_temp": 45.0,
             "fan1": 2800, "fan2": 2700, "bat_w": 30.0, "bat_v": 15.0, "bat_pct": 80, "ac": 0,
-            "pcie_err": 100, "pcie_new": 0, "profile": "quiet", "stability": 1}
+            "profile": "quiet", "stability": 1}
     base.update(kw)
     return base
 
@@ -622,9 +598,8 @@ def test_blackbox_sample_reads_the_machine(client):
     s = sampler.sample()
     assert s["boot"] == NOW_BOOT and s["cpu_temp"] == 55.0
     assert s["fan1"] == 2800 and s["bat_w"] == 20.0 and s["ac"] == 0
-    assert s["pcie_err"] == 0 and s["pcie_new"] == 0 and s["profile"] == "balanced" and s["stability"] == 0
-    w("sys/devices/pci0000:00/0000:00:01.1/0000:01:00.0/aer_dev_correctable", "BadTLP 7\nTOTAL_ERR_COR 7")
-    assert sampler.sample()["pcie_new"] == 7
+    assert s["profile"] == "balanced" and s["stability"] == 0
+    assert not any(k.startswith("pcie") for k in s)
     con = blackbox.connect()
     blackbox.record(con, s)
     assert con.execute("SELECT COUNT(*) FROM samples").fetchone()[0] == 1
@@ -637,13 +612,13 @@ def test_blackbox_keeps_last_two_minutes_of_a_crash(client, monkeypatch):
     _fake_boots(monkeypatch, end)
     con = blackbox.connect()
     for i in range(300):  # 10 minutes of the crashed session, every 2 s, getting hotter
-        blackbox.record(con, _row(end - 600 + i * 2, CRASH_BOOT, cpu_temp=60 + i * 0.1, pcie_err=100 + i))
+        blackbox.record(con, _row(end - 600 + i * 2, CRASH_BOOT, cpu_temp=60 + i * 0.1))
     assert blackbox.capture_crashes(con) == 1
     assert blackbox.capture_crashes(con) == 0          # only once per crash
     d = client.get(f"/api/blackbox/crashes/{CRASH_BOOT}").get_json()
     assert 55 <= len(d["samples"]) <= 62                # the last CRASH_WINDOW seconds
     assert d["summary"]["cpu_temp_max"] == round(60 + 299 * 0.1, 1)
-    assert d["summary"]["pcie_err_delta"] > 50 and d["summary"]["stability"] is True
+    assert d["summary"]["stability"] is True and "pcie_err_delta" not in d["summary"]
     ev = client.get("/api/blackbox/crashes").get_json()["crashes"]
     assert len(ev) == 1 and ev[0]["recorded"] and ev[0]["boot"] == CRASH_BOOT
     assert client.get("/api/blackbox/crashes/" + "c" * 32).status_code == 404
@@ -657,16 +632,13 @@ def test_history_rollup_buckets_and_crash_markers(client, monkeypatch):
     _fake_boots(monkeypatch, now - 1200)
     con = blackbox.connect()
     for i in range(600):  # 20 minutes
-        blackbox.record(con, _row(now - 1200 + i * 2, NOW_BOOT, cpu_temp=50 + (i % 30), pcie_err=i // 10,
-                                  pcie_new=1 if i and i % 10 == 0 else 0))
+        blackbox.record(con, _row(now - 1200 + i * 2, NOW_BOOT, cpu_temp=50 + (i % 30)))
     blackbox.rollup(con, until=now)
     assert con.execute("SELECT COUNT(*) FROM minutes").fetchone()[0] == 20
     h = client.get("/api/history?range=6h").get_json()
     assert h["bucket"] == 60 and len(h["points"]) == 20
     p = h["points"][0]
     assert p["cpu_max"] == 79.0 and 60 < p["cpu"] < 70 and p["stab"] == 1
-    # every error counted, including the ones between two minutes: 59 increments in 600 readings
-    assert [q["pcie"] for q in h["points"][:2]] == [2, 3] and sum(q["pcie"] for q in h["points"]) == 59
     assert [c["boot"] for c in h["crashes"]] == [CRASH_BOOT]
     assert client.get("/api/history?range=1y").status_code == 400
 
@@ -707,7 +679,7 @@ def test_repair_report(client, monkeypatch):
     assert r["symptoms"] == "Freezes when lifted under load."
     assert r["summary"]["crashes"] == 1 and r["summary"]["sessions"] == 2 and r["summary"]["recorded_crashes"] == 1
     assert r["crashes"][0]["summary"]["cpu_temp_max"] == 60.0
-    assert r["pcie"]["gpu_link"]["bdf"] == "0000:01:00.0"
+    assert "pcie" not in r
     assert [t["result"] for t in r["tests"]] == ["crashed"]
     assert r["machine_checks"]["checked"] is False       # no journalctl in the test sandbox
     # the owner can mark a session as an intentional power-off: it stops counting as a crash
@@ -885,7 +857,7 @@ def shown(monkeypatch):
 
 def test_alert_settings_roundtrip_and_validation(client):
     a = client.get("/api/alerts").get_json()
-    assert a["enabled"] is True and {i["kind"] for i in a["items"]} == {"cpu_hot", "pcie_burst", "stability_off", "crash"}
+    assert a["enabled"] is True and {i["kind"] for i in a["items"]} == {"cpu_hot", "stability_off", "crash"}
     a = client.post("/api/alerts", json={"items": {"cpu_hot": {"threshold": 85}, "crash": {"enabled": False}}}).get_json()
     items = {i["kind"]: i for i in a["items"]}
     assert items["cpu_hot"]["threshold"] == 85 and items["crash"]["enabled"] is False
@@ -912,18 +884,6 @@ def test_cpu_hot_alert_needs_a_few_hot_readings_and_rearms(client, shown):
     assert len(shown) == 2
 
 
-def test_pcie_burst_alert_counts_the_last_minute(client, shown):
-    from coolpilot import alerts
-    wt = alerts.Watcher()
-    for i in range(20):                                       # 20 x 4 errors spread over 40 s = 80 < 100
-        wt.check({"pcie_new": 4}, now=1000 + i * 2)
-    assert shown == []
-    wt.check({"pcie_new": 30}, now=1042)
-    assert [a["kind"] for a in shown] == ["pcie_burst"] and "110 GPU link errors" in shown[0]["title"]
-    wt.check({"pcie_new": 500}, now=1050)                     # cooldown
-    assert len(shown) == 1
-
-
 def test_stability_off_alert_only_on_a_change(client, shown):
     from coolpilot import alerts
     wt = alerts.Watcher()
@@ -942,7 +902,7 @@ def test_alerts_respect_the_switches(client, shown):
     assert shown == []
     client.post("/api/alerts", json={"enabled": False, "items": {"stability_off": {"enabled": True}}})
     for i in range(5):
-        wt.check({"cpu_temp": 99, "pcie_new": 999, "stability": i % 2}, now=2000 + i * 2)
+        wt.check({"cpu_temp": 99, "stability": i % 2}, now=2000 + i * 2)
     assert shown == []                                        # everything off
 
 

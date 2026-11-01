@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, type BlackboxSample, type BlackboxStatus, type CrashEvent, type HistoryData } from '../api'
-import { BarChart, fmtDateTime, LineChart, type Band } from '../components/Charts'
+import { fmtDateTime, LineChart, type Band } from '../components/Charts'
 import { Badge, Button, Card, Segmented, Toggle } from '../components/ui'
 import { usePoll, useToast } from '../hooks'
 
@@ -67,7 +67,6 @@ function CrashCard({ c }: { c: CrashEvent }) {
           <Chip label="GPU peak" value={s.gpu_temp_max != null ? `${Math.round(s.gpu_temp_max)}°C` : s.gpu_state === 'suspended' ? 'asleep' : '—'} />
           <Chip label="Power" value={s.ac ? 'charger' : 'battery'} />
           <Chip label="Mode" value={`${s.profile ?? '?'}${s.stability ? ' + Stability' : ''}`} />
-          <Chip label="New GPU link errors" value={String(s.pcie_err_delta ?? 0)} tone={(s.pcie_err_delta ?? 0) > 0 ? 'warn' : undefined} />
           {s.gap_to_end != null && s.gap_to_end > 10 && <Chip label="Last reading" value={`${Math.round(s.gap_to_end)} s before the end`} />}
         </div>
       )}
@@ -79,8 +78,6 @@ function CrashCard({ c }: { c: CrashEvent }) {
           <LineChart times={times} from={from} to={c.end} bucket={2} height={110} zeroBased markers={marker}
             format={(v) => `${Math.round(v)}%`}
             series={[{ key: 'use', label: 'CPU load', color: S1, values: samples.map((x) => x.cpu_usage) }]} />
-          <BarChart times={times} from={from} to={c.end} bucket={2} height={100} markers={marker}
-            label="New GPU link errors" color={S2} values={samples.map((x) => x.pcie_new ?? 0)} />
         </div>
       )}
     </div>
@@ -117,7 +114,7 @@ export function History() {
     <div className="page">
       <Card
         title={<>Black box {bb?.enabled ? (bb.running ? <Badge tone="good">● recording</Badge> : <Badge tone="warn">not running</Badge>) : <Badge>off</Badge>}</>}
-        subtitle="Records temperatures, load, fans, power and GPU link errors every few seconds, straight to disk — so the moments before a freeze are never lost."
+        subtitle="Records temperatures, load, fans and power every few seconds, straight to disk — so the moments before a freeze are never lost."
         actions={bb && <Toggle checked={bb.enabled} label="Black box recording"
           onChange={async (v) => { try { setBb(await api.post<BlackboxStatus>('/blackbox', { enabled: v })); toast('ok', v ? 'Black box on' : 'Black box off') } catch (e) { toast('error', (e as Error).message) } }} />}
       >
@@ -168,10 +165,6 @@ export function History() {
           <Card title="Fan speed" subtitle="Average of both fans, rpm">
             <LineChart {...common} format={rpm} zeroBased markers={markers} bands={bands} height={150}
               series={[{ key: 'fan', label: 'Fans', color: S1, values: pts.map((p) => p.fan) }]} />
-          </Card>
-          <Card title="GPU link errors" subtitle="New corrected errors on the CPU ↔ GPU PCIe link per interval (0 is healthy)">
-            <BarChart {...common} label="New errors" color={S2} markers={markers}
-              values={pts.map((p) => p.pcie ?? 0)} />
           </Card>
         </>
       )}

@@ -58,10 +58,10 @@ cool and steady to reduce freezes until it is repaired.
 | **Fans** | Fan mode buttons: **Default** (factory) or **Stability** (steady, never-stop curve). Drag-and-drop 8-point curve editor per fan. The choice sticks across reboot, sleep and mode changes. |
 | **GPU** | NVIDIA Dynamic Boost and temperature target, live GPU stats (doesn't wake a sleeping GPU). |
 | **Battery & Display** | Charge limit (e.g. 80%), battery health, screen brightness, keyboard backlight, panel overdrive. |
-| **Alerts** | Desktop notifications when the CPU gets too hot, when the CPU ↔ GPU link has a burst of errors, when Stability mode turns off, and after a freeze or unexpected restart. Turn all alerts off at once or each one separately, set the temperature and error thresholds, send a test alert, and see recent alerts. Works with any desktop that shows notifications (GNOME, KDE, Hyprland/mako, Sway, …). |
+| **Alerts** | Desktop notifications when the CPU gets too hot, when Stability mode turns off, and after a freeze or unexpected restart. Turn all alerts off at once or each one separately, set the temperature threshold, send a test alert, and see recent alerts. Works with any desktop that shows notifications (GNOME, KDE, Hyprland/mako, Sway, …). |
 | **Profiles & backup** | Built-in Stability, Quiet, Balanced, Performance, **Gaming** (Turbo, full boost, highest power limits the firmware allows, maximum GPU boost, cooler fan curve) and **Factory defaults** (Balanced on battery, Turbo on the charger, switching by itself). Save your own, apply them, or set one to apply at every boot. **Export all settings to one file** and import them after a reinstall, on another distro or on another laptop (values are fitted to the new machine's limits). |
-| **History & black box** | An always-on recorder writes temperatures, load, fans, power and GPU link errors to disk every 2 s. After a freeze or reset you see **what the laptop was doing in its last 2 minutes**, plus charts over 6 hours to 90 days with crash markers and Stability-mode periods. |
-| **Repair report** | One document for the service center: device & serial, warranty, your symptom description, crash timeline with black-box readings, PCIe link errors, CPU machine-check errors and stress-test results. Print / save as PDF or download as HTML. Sessions you powered off on purpose can be left out. |
+| **History & black box** | An always-on recorder writes temperatures, load, fans and power to disk every 2 s. After a freeze or reset you see **what the laptop was doing in its last 2 minutes**, plus charts over 6 hours to 90 days with crash markers and Stability-mode periods. |
+| **Repair report** | One document for the service center: device & serial, warranty, your symptom description, crash timeline with black-box readings, CPU machine-check errors and stress-test results. Print / save as PDF or download as HTML. Sessions you powered off on purpose can be left out. |
 | **Crash diagnostics** | Run CPU / RAM / GPU / SSD / idle stress tests while logging sensors to disk every 0.5 s (the log survives a freeze), mark which area of the laptop you're pressing, read the crash report, see which past sessions ended in a crash. |
 | **System** | Model, serial, BIOS, kernel, and your warranty info (entered by you, stored locally). |
 
@@ -81,23 +81,23 @@ Mint / Pop!_OS, Fedora, openSUSE, and others — with any desktop (GNOME, KDE, H
 | **A laptop** — ideally ASUS TUF / ROG | the ASUS-specific features use the kernel's `asus-wmi` / `asus-armoury` drivers; AMD or Intel CPU, NVIDIA or no dGPU |
 | Node.js 20.19+ / 22.12+ *(optional)* | only to rebuild the UI — a prebuilt UI is included |
 
-Optional tools (crash tests and extra readings): `stress-ng`, `glmark2`, `pciutils` (`lspci`),
+Optional tools (crash tests and extra readings): `stress-ng`, `glmark2`,
 `nvidia-smi` (comes with the NVIDIA driver), `power-profiles-daemon`.
 
 **Install the requirements for your distro:**
 
 ```bash
 # Arch / Manjaro / EndeavourOS
-sudo pacman -S --needed git python stress-ng glmark2 pciutils power-profiles-daemon
+sudo pacman -S --needed git python stress-ng glmark2 power-profiles-daemon
 
 # Debian / Ubuntu / Mint / Pop!_OS
-sudo apt install git python3 python3-venv stress-ng glmark2 pciutils power-profiles-daemon
+sudo apt install git python3 python3-venv stress-ng glmark2 power-profiles-daemon
 
 # Fedora
-sudo dnf install git python3 stress-ng glmark2 pciutils
+sudo dnf install git python3 stress-ng glmark2
 
 # openSUSE (Leap needs python311; Tumbleweed's python3 is fine)
-sudo zypper install git python311 stress-ng glmark2 pciutils power-profiles-daemon
+sudo zypper install git python311 stress-ng glmark2 power-profiles-daemon
 ```
 
 Package names can differ slightly between releases, and some distros split glmark2 into separate
@@ -111,7 +111,6 @@ X11 / Wayland / ES2 builds — any of them works.
 | CPU & GPU power limits, GPU Dynamic Boost | the `asus-armoury` driver (recent kernels) |
 | Custom fan curves | `asus_custom_fan_curve` (kernel 5.17+, most TUF/ROG models) |
 | CPU boost switch | AMD (`amd-pstate` / `acpi-cpufreq`) or Intel (`intel_pstate`) |
-| GPU link error tracking | an NVIDIA dGPU |
 
 Not supported: distros without systemd (Void, Alpine, Artix/OpenRC), and NixOS through the
 installer (paths like `/opt` and `/etc/systemd/system` are managed declaratively there).

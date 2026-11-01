@@ -12,7 +12,7 @@ import time
 from flask import Flask, jsonify, request, send_from_directory
 
 from . import alerts, backup, battery, blackbox, diag, fanmode, profiles, report, security, stability
-from .hw import fans, gpu, pcie, sensors, sysfs
+from .hw import fans, gpu, sensors, sysfs
 from .hw.device import device_name
 
 DIST = os.environ.get(
@@ -127,7 +127,6 @@ def create_app(token: str | None = None) -> Flask:
             "warranty": profiles.config().get("warranty"),
             "conflicts": conflicts(),
             "features": {"fan_curves": fans.available(), "diagnostics": diag.available(),
-                         "pcie_errors": pcie.available(),
                          "gpu_mode_switch": False},
         })
 

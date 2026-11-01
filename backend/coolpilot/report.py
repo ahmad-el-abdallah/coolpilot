@@ -1,8 +1,7 @@
 """Repair report: everything a service center needs, in one place.
 
 Pulls together the device, warranty info (entered by the user), their symptom
-description, the crash timeline with black-box readings, PCIe link errors, the
-crash-test results and whether the CPU ever reported a hardware error.
+description, the crash timeline with black-box readings, the crash-test results and whether the CPU ever reported a hardware error.
 """
 from __future__ import annotations
 
@@ -13,7 +12,7 @@ import subprocess
 import time
 
 from . import blackbox, diag, profiles, stability
-from .hw import gpu, pcie, sysfs
+from .hw import gpu, sysfs
 from .hw.device import device_name
 
 DAYS = (14, 30, 90)
@@ -44,7 +43,7 @@ def _tests(crashes: list[dict]) -> list[dict]:
     survived = " ".join(diag.results())
     out = []
     for lg in diag.logs():
-        if lg["test"] not in diag.TESTS:  # e.g. logs from the old PCIe watch
+        if lg["test"] not in diag.TESTS:  # e.g. logs from older versions
             continue
         try:
             start = dt.datetime.strptime(lg["name"][:15], "%Y%m%d-%H%M%S")
@@ -79,15 +78,6 @@ def build(days: int = 30) -> dict:
     crashes = [c for c in in_window if c["boot"] not in excluded_ids]
     excluded = [c for c in in_window if c["boot"] in excluded_ids]
     finished = [b for b in sessions if b["ending"] in ("clean", "crash")]
-    gbdf = pcie.gpu_bdf()
-    links = pcie.links()
-    gpu_link = next((lk for lk in links if lk["bdf"] == gbdf), None)
-    other_links = [lk for lk in links if lk["bdf"] != gbdf and not lk["label"].startswith("CPU root port")]
-    try:
-        per_boot = [{"start": b["start"], "ending": b["ending"], "errors": b["gpu_pcie_errors"]}
-                    for b in pcie.history() if b["start"] >= since]
-    except (OSError, subprocess.SubprocessError):
-        per_boot = []
 
     return {
         "generated": now,
@@ -98,7 +88,7 @@ def build(days: int = 30) -> dict:
             "bios": f"{r('sys/class/dmi/id/bios_version') or '?'} ({r('sys/class/dmi/id/bios_date') or '?'})",
             "cpu": next((ln.split(":", 1)[1].strip() for ln in (r("proc/cpuinfo") or "").splitlines()
                          if ln.startswith("model name")), None),
-            "gpu": gpu.snapshot().get("name") if gbdf else None,
+            "gpu": gpu.snapshot().get("name"),
             "os": _os_name(), "kernel": platform.release(),
         },
         "warranty": cfg.get("warranty"),
@@ -115,12 +105,6 @@ def build(days: int = 30) -> dict:
         },
         "crashes": crashes,
         "excluded": [{"boot": c["boot"], "end": c["end"], "minutes": c["minutes"]} for c in excluded],
-        "pcie": {
-            "gpu_link": gpu_link,
-            "other_links": [{"label": lk["label"], "correctable": lk["correctable"], "fatal": lk["fatal"]}
-                            for lk in other_links],
-            "per_session": per_boot,
-        },
         "machine_checks": _machine_checks(days),
         "tests": _tests(crashes),
     }

@@ -10,7 +10,7 @@ os.environ["COOLPILOT_SYSFS_ROOT"] = ROOT
 os.environ["COOLPILOT_CONFIG_DIR"] = CONF
 os.environ["COOLPILOT_TOKEN"] = "test-token"
 os.environ["COOLPILOT_DIST"] = os.path.join(ROOT, "dist")
-os.environ["PATH"] = "/nonexistent"  # no powerprofilesctl / nvidia-smi / lspci / glmark2 in tests
+os.environ["PATH"] = "/nonexistent"  # no powerprofilesctl / nvidia-smi / glmark2 in tests
 os.environ["COOLPILOT_DIAG_DIR"] = tempfile.mkdtemp(prefix="coolpilot-diag-")
 os.environ["COOLPILOT_DATA_DIR"] = tempfile.mkdtemp(prefix="coolpilot-data-")
 
@@ -75,13 +75,6 @@ def build():
         d = f"{tree}/{rel}"
         w(f"{d}/vendor", vendor)
         w(f"{d}/class", cls)
-        w(f"{d}/current_link_speed", "16.0 GT/s PCIe")
-        w(f"{d}/max_link_speed", "16.0 GT/s PCIe")
-        w(f"{d}/current_link_width", 8 if bdf != "0000:04:00.0" else 4)
-        w(f"{d}/max_link_width", 8 if bdf != "0000:04:00.0" else 4)
-        w(f"{d}/aer_dev_correctable", "RxErr 0\nBadTLP 0\nTOTAL_ERR_COR 0")
-        w(f"{d}/aer_dev_nonfatal", "Undefined 0\nTOTAL_ERR_NONFATAL 0")
-        w(f"{d}/aer_dev_fatal", "Undefined 0\nTOTAL_ERR_FATAL 0")
         link = os.path.join(ROOT, "sys/bus/pci/devices", bdf)
         os.makedirs(os.path.dirname(link), exist_ok=True)
         if not os.path.islink(link):

@@ -40,7 +40,6 @@ Everything is plain Linux sysfs — no vendor tools required:
 | CPU & GPU power limits | `/sys/class/firmware-attributes/asus-armoury/attributes/` |
 | Fan curves | hwmon `asus_custom_fan_curve` (`pwmN_auto_pointM_{temp,pwm}`, `pwmN_enable`) |
 | Charge limit | `/sys/class/power_supply/BAT*/charge_control_end_threshold` |
-| PCIe errors | `/sys/bus/pci/devices/*/aer_dev_{correctable,nonfatal,fatal}` |
 
 Saved state lives in `/etc/coolpilot/` (`config.json`, `profiles.json`, `stability.json`, `token`).
 Black-box recordings and history live in `/var/lib/coolpilot/blackbox.db` (SQLite, every reading
@@ -53,7 +52,7 @@ and the last 2 minutes before every crash forever — a few MB in total.
 backend/            Flask API (Python)
   coolpilot/app.py          routes + serving the built UI
   coolpilot/security.py     host check + token
-  coolpilot/hw/             sysfs settings whitelist, sensors, fans, GPU, PCIe
+  coolpilot/hw/             sysfs settings whitelist, sensors, fans, GPU
   coolpilot/profiles.py     profiles, apply order, boot / resume re-apply, factory reset
   coolpilot/stability.py    configurable Stability mode
   coolpilot/fanmode.py      Default / Stability / Custom fan mode that sticks

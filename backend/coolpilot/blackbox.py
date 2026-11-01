@@ -20,7 +20,7 @@ import threading
 import time
 
 from . import alerts, diag, profiles
-from .hw import gpu, pcie, sensors, sysfs
+from .hw import gpu, sensors, sysfs
 
 DATA_DIR = os.environ.get("COOLPILOT_DATA_DIR", "/var/lib/coolpilot")
 INTERVAL = float(os.environ.get("COOLPILOT_BLACKBOX_INTERVAL", "2"))
@@ -30,7 +30,7 @@ MINUTE_DAYS = 365
 CRASH_WINDOW = 120  # seconds of readings kept per crash
 
 COLS = ["ts", "boot", "cpu_temp", "cpu_mhz", "cpu_usage", "load1", "gpu_temp", "gpu_w", "gpu_state",
-        "ssd_temp", "ram_temp", "fan1", "fan2", "bat_w", "bat_v", "bat_pct", "ac", "pcie_err", "pcie_new",
+        "ssd_temp", "ram_temp", "fan1", "fan2", "bat_w", "bat_v", "bat_pct", "ac",
         "profile", "stability"]
 
 SCHEMA = f"""
@@ -39,7 +39,7 @@ CREATE INDEX IF NOT EXISTS samples_ts ON samples(ts);
 CREATE INDEX IF NOT EXISTS samples_boot ON samples(boot, ts);
 CREATE TABLE IF NOT EXISTS minutes (
   ts INTEGER, boot TEXT, n INTEGER, cpu_temp REAL, cpu_temp_max REAL, gpu_temp REAL, gpu_temp_max REAL,
-  cpu_usage REAL, bat_w REAL, fan REAL, pcie_err INTEGER, ac INTEGER, stability INTEGER, profile TEXT,
+  cpu_usage REAL, bat_w REAL, fan REAL, ac INTEGER, stability INTEGER, profile TEXT,
   PRIMARY KEY (ts, boot));
 CREATE TABLE IF NOT EXISTS crashes (boot TEXT PRIMARY KEY, start REAL, end REAL, samples TEXT);
 """
@@ -76,8 +76,6 @@ class Sampler:
         self.prev_stat: tuple[int, int] | None = None
         self.gpu_at = 0.0
         self.gpu: dict = {}
-        self.gpu_bdf = pcie.gpu_bdf()
-        self.prev_err: int | None = None
 
     def _usage(self) -> float | None:
         line = (sysfs.read("proc/stat") or "").splitlines()
@@ -114,10 +112,6 @@ class Sampler:
             cur = sysfs.read_int(f"{bat}/current_now")
             power = cur * volt // 1_000_000 if cur and volt else None
         gpu_temp, gpu_w, gpu_state = self._gpu(now)
-        err = pcie._total(pcie._counts(self.gpu_bdf, "correctable")) if self.gpu_bdf else None
-        # new errors since the previous reading (the counter itself restarts every boot)
-        new = max(0, err - self.prev_err) if err is not None and self.prev_err is not None else 0
-        self.prev_err = err
         return {
             "ts": now, "boot": boot_id(),
             "cpu_temp": sensors._milli(f"{cpu}/temp1_input") if cpu else None,
@@ -133,7 +127,6 @@ class Sampler:
             "bat_v": round(volt / 1e6, 3) if volt else None,
             "bat_pct": sysfs.read_int(f"{bat}/capacity"),
             "ac": 1 if sysfs.on_ac() else 0,
-            "pcie_err": err, "pcie_new": new,
             "profile": sysfs.read("sys/firmware/acpi/platform_profile"),
             "stability": 1 if stability.is_on() else 0,
         }
@@ -152,11 +145,11 @@ def rollup(con: sqlite3.Connection, until: float | None = None) -> None:
     since = (row[0] + 60) if row and row[0] is not None else 0
     con.execute("""
         INSERT OR REPLACE INTO minutes (ts, boot, n, cpu_temp, cpu_temp_max, gpu_temp, gpu_temp_max,
-                                        cpu_usage, bat_w, fan, pcie_err, ac, stability, profile)
+                                        cpu_usage, bat_w, fan, ac, stability, profile)
         SELECT CAST(ts / 60 AS INTEGER) * 60 AS m, boot, COUNT(*), AVG(cpu_temp), MAX(cpu_temp),
                AVG(gpu_temp), MAX(gpu_temp), AVG(cpu_usage), AVG(bat_w),
                AVG((COALESCE(fan1, 0) + COALESCE(fan2, 0)) / 2.0),
-               SUM(pcie_new), MAX(ac), MAX(stability), MAX(profile)
+               MAX(ac), MAX(stability), MAX(profile)
         FROM samples WHERE ts >= ? AND ts < ? GROUP BY m, boot""", (since, until))
     con.commit()
 
@@ -287,7 +280,6 @@ def _summary(samples: list[dict], end: float) -> dict:
         return round(sum(vals) / len(vals), 1) if vals else None
 
     last = samples[-1]
-    errs = [s["pcie_err"] for s in samples if s.get("pcie_err") is not None]
     return {
         "seconds": round(last["ts"] - samples[0]["ts"]),
         "last_ts": last["ts"],
@@ -298,7 +290,6 @@ def _summary(samples: list[dict], end: float) -> dict:
         "ssd_temp_max": peak("ssd_temp"), "ram_temp_max": peak("ram_temp"),
         "bat_w_last": last.get("bat_w"), "ac": bool(last.get("ac")),
         "profile": last.get("profile"), "stability": bool(last.get("stability")),
-        "pcie_err_delta": (errs[-1] - errs[0]) if len(errs) > 1 else 0,
     }
 
 
@@ -358,7 +349,7 @@ def history(rng: str) -> dict:
                        AVG(cpu_temp) AS cpu, MAX(cpu_temp_max) AS cpu_max,
                        AVG(gpu_temp) AS gpu, MAX(gpu_temp_max) AS gpu_max,
                        AVG(cpu_usage) AS usage, AVG(bat_w) AS bat_w, AVG(fan) AS fan,
-                       SUM(pcie_err) AS pcie, AVG(ac) AS ac, AVG(stability) AS stab, SUM(n) AS n
+                       AVG(ac) AS ac, AVG(stability) AS stab, SUM(n) AS n
                 FROM minutes WHERE ts >= ? GROUP BY t ORDER BY t""",
                                (bucket, bucket, now - span)).fetchall()
             points = [{k: (round(r[k], 1) if isinstance(r[k], float) else r[k]) for k in r.keys()} for r in rows]

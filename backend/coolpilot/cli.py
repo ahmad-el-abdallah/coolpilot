@@ -11,7 +11,7 @@ the service's venv without importing the rest of the app.
     coolpilot profile [name]           list profiles, or apply one
     coolpilot gaming                   Gaming mode (best performance)
     coolpilot charge full|cancel|<20-100>
-    coolpilot alerts [on|off|test]     desktop alerts (hot CPU, GPU link errors, ...)
+    coolpilot alerts [on|off|test]     desktop alerts (hot CPU, crashes, ...)
     coolpilot export [file]            save all settings to a file (default: print them)
     coolpilot import <file>            restore settings from an exported file
     coolpilot open                     open the web app
