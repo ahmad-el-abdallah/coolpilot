@@ -2,14 +2,14 @@
 
 | Problem | Fix |
 |---|---|
-| Page says "Backend unreachable" | `systemctl status coolpilot` · `journalctl -u coolpilot -n 50` |
+| Page says "Backend unreachable" | systemd: `systemctl status coolpilot` · `journalctl -u coolpilot -n 50`. OpenRC: `rc-service coolpilot status` · `tail -n 50 /var/log/coolpilot.log` |
 | Changes don't show up after `git pull` | run `sudo ./install.sh` again, then hard-reload the page (Ctrl+Shift+R) |
 | "Permission denied" when changing a setting | you're running a dev copy as a normal user — use the installed service |
 | A setting shows 🔒 | the firmware locks it right now (usually on battery) — plug in the charger |
-| Profile not re-applied after boot | `journalctl -u coolpilot-boot` |
+| Profile not re-applied after boot | systemd: `journalctl -u coolpilot-boot`. OpenRC: `rc-service coolpilot-boot start` and check `/var/log/coolpilot.log` |
 | Fan curves reset | make sure you picked a fan mode on the Fans page — it is re-applied after reboot / sleep / mode changes |
 | Settings keep changing back | another tool (asusctl, TLP, auto-cpufreq, TuneD) is managing them — see the Dashboard warning |
-| Crash history only shows the current boot | the journal isn't persistent: `sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald` |
+| Crash history only shows the current boot | systemd: the journal isn't persistent — `sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald`. OpenRC has no such step: it's always built from CoolPilot's own black-box recordings, from the first boot after install onward |
 | `python3 -m venv` fails (Debian / Ubuntu) | `sudo apt install python3-venv` |
 | GPU crash test does nothing | install `glmark2`; on NVIDIA laptops make sure the NVIDIA driver is loaded (`nvidia-smi`) |
 | Desktop alerts don't appear | Alerts page → *Send a test alert*. It needs a notification daemon (built into GNOME/KDE; mako, dunst or swaync on tiling desktops). Alerts that found no desktop wait up to an hour and show after you log in |

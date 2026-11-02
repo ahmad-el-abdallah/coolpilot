@@ -76,3 +76,25 @@ jobs:
       - name: Service logs
         if: failure()
         run: docker exec cp journalctl -u coolpilot -n 80 --no-pager || true
+
+  distro-openrc:
+    name: Install on ${{ matrix.image }} (OpenRC)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["alpine:3.20"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build a ${{ matrix.image }} image with OpenRC
+        run: docker build -q -t coolpilot-test-openrc --build-arg IMAGE=${{ matrix.image }} -f ci/Dockerfile.openrc ci
+      - name: Boot it
+        run: |
+          docker run -d --name cp --init --privileged --cgroupns=host \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock --tmpfs /tmp \
+            -v "$PWD:/src:ro" coolpilot-test-openrc
+      - name: Install, use and remove CoolPilot
+        run: docker exec cp bash /src/ci/distro-test.sh
+      - name: Service log
+        if: failure()
+        run: docker exec cp cat /var/log/coolpilot.log || true

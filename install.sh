@@ -4,7 +4,8 @@
 #   sudo ./install.sh          install or update
 #   ./install.sh --check       only check this system (no changes, no root needed)
 #
-# Works on any systemd distro (Arch, Debian/Ubuntu, Fedora, openSUSE, ...).
+# Works on any systemd distro (Arch, Debian/Ubuntu, Fedora, openSUSE, ...) and
+# any OpenRC distro (Alpine, Gentoo, Artix, Devuan, ...).
 set -euo pipefail
 
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -39,6 +40,8 @@ if [[ -r /etc/os-release ]]; then
     *" debian "*|*" ubuntu "*) DISTRO=debian ;;
     *" fedora "*|*" rhel "*) DISTRO=fedora ;;
     *" suse "*|*" opensuse "*) DISTRO=suse ;;
+    *" alpine "*) DISTRO=alpine ;;
+    *" gentoo "*) DISTRO=gentoo ;;
   esac
 fi
 hint() {  # hint <what> : distro-specific install command
@@ -47,10 +50,14 @@ hint() {  # hint <what> : distro-specific install command
     debian:python) echo "sudo apt install python3 python3-venv" ;;
     fedora:python) echo "sudo dnf install python3" ;;
     suse:python)   echo "sudo zypper install python311" ;;
+    alpine:python) echo "sudo apk add python3" ;;
+    gentoo:python) echo "sudo emerge dev-lang/python" ;;
     arch:tools)    echo "sudo pacman -S --needed stress-ng glmark2" ;;
     debian:tools)  echo "sudo apt install stress-ng glmark2" ;;
     fedora:tools)  echo "sudo dnf install stress-ng glmark2" ;;
     suse:tools)    echo "sudo zypper install stress-ng glmark2" ;;
+    alpine:tools)  echo "sudo apk add stress-ng glmark2" ;;
+    gentoo:tools)  echo "sudo emerge sys-apps/stress-ng media-libs/glmark2" ;;
     *:python)      echo "install Python 3.9+ with the venv module" ;;
     *:tools)       echo "install stress-ng and glmark2 with your package manager" ;;
   esac
@@ -59,11 +66,14 @@ hint() {  # hint <what> : distro-specific install command
 echo "==> Checking this system (${PRETTY_NAME:-unknown distro}, user $USER_NAME)"
 FATAL=0
 
-# ------------------------------------------------------------------ systemd
+# ------------------------------------------------------------------ init system
+INIT=unknown
 if [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null; then
-  ok "systemd"
+  INIT=systemd; ok "systemd"
+elif command -v rc-service >/dev/null && command -v rc-update >/dev/null; then
+  INIT=openrc; ok "OpenRC"
 else
-  bad "systemd is required (services for the web panel and boot re-apply)"; FATAL=1
+  bad "systemd or OpenRC is required (services for the web panel and boot re-apply)"; FATAL=1
 fi
 
 # ------------------------------------------------------------------ Python 3.9+ with venv
@@ -117,12 +127,16 @@ if ((${#missing[@]})); then warn "optional, for crash tests: ${missing[*]}  → 
 command -v powerprofilesctl >/dev/null && ok "powerprofilesctl" || warn "powerprofilesctl not found — performance mode is written directly"
 
 # ------------------------------------------------------------------ conflicting tools
+is_running() {
+  if [[ $INIT == systemd ]]; then systemctl is-active --quiet "$1" 2>/dev/null
+  else rc-service "$1" status 2>/dev/null | grep -q started; fi
+}
 for u in asusd tlp auto-cpufreq tuned laptop-mode; do
-  if systemctl is-active --quiet "$u" 2>/dev/null; then
+  if is_running "$u"; then
     warn "$u is running and manages some of the same settings — it may undo changes (the app will show a warning)"
   fi
 done
-if [[ ! -d /var/log/journal ]]; then
+if [[ $INIT == systemd && ! -d /var/log/journal ]]; then
   warn "journal isn't persistent — crash history only shows the current boot  →  sudo mkdir -p /var/log/journal && sudo systemctl restart systemd-journald"
 fi
 
@@ -184,17 +198,35 @@ if [[ ! -s /etc/coolpilot/token ]]; then
   (umask 077; "$PYTHON" -c "import secrets; print(secrets.token_urlsafe(32))" > /etc/coolpilot/token)
 fi
 
-echo "==> systemd services + udev rule"
-SYSTEMCTL=$(command -v systemctl)
-for u in coolpilot coolpilot-boot coolpilot-resume; do
-  sed "s/@USER@/$USER_NAME/" "$SRC/systemd/$u.service" > "/etc/systemd/system/$u.service"
-done
-sed "s|/usr/bin/systemctl|$SYSTEMCTL|" "$SRC/systemd/90-coolpilot.rules" > /etc/udev/rules.d/90-coolpilot.rules
-udevadm control --reload 2>/dev/null || true   # no udev daemon in containers
-systemctl daemon-reload
-systemctl enable coolpilot-boot.service coolpilot-resume.service >/dev/null
-systemctl enable coolpilot.service >/dev/null
-systemctl restart coolpilot.service
+if [[ $INIT == systemd ]]; then
+  echo "==> systemd services + udev rule"
+  SYSTEMCTL=$(command -v systemctl)
+  for u in coolpilot coolpilot-boot coolpilot-resume; do
+    sed "s/@USER@/$USER_NAME/" "$SRC/systemd/$u.service" > "/etc/systemd/system/$u.service"
+  done
+  sed "s|/usr/bin/systemctl|$SYSTEMCTL|" "$SRC/systemd/90-coolpilot.rules" > /etc/udev/rules.d/90-coolpilot.rules
+  udevadm control --reload 2>/dev/null || true   # no udev daemon in containers
+  systemctl daemon-reload
+  systemctl enable coolpilot-boot.service coolpilot-resume.service >/dev/null
+  systemctl enable coolpilot.service >/dev/null
+  systemctl restart coolpilot.service
+else
+  echo "==> OpenRC services + udev rule"
+  RC_SERVICE=$(command -v rc-service)
+  for u in coolpilot coolpilot-boot coolpilot-resume; do
+    sed "s/@USER@/$USER_NAME/" "$SRC/openrc/$u" > "/etc/init.d/$u"
+    chmod 755 "/etc/init.d/$u"
+  done
+  sed "s|@RC_SERVICE@|$RC_SERVICE|" "$SRC/openrc/90-coolpilot.rules" > /etc/udev/rules.d/90-coolpilot.rules
+  udevadm control --reload 2>/dev/null || true   # no udev daemon in containers
+  # elogind implements the same system-sleep hook directory as systemd-logind,
+  # for re-applying the profile after resume (the udev rule above covers AC change)
+  mkdir -p /usr/lib/elogind/system-sleep
+  install -m 755 "$SRC/openrc/coolpilot-sleep" /usr/lib/elogind/system-sleep/coolpilot
+  rc-update add coolpilot-boot default >/dev/null
+  rc-update add coolpilot default >/dev/null
+  rc-service coolpilot restart
+fi
 
 echo "==> Crash-test scripts in $USER_HOME/crashdiag (logs there are left alone)"
 runuser -u "$USER_NAME" -- mkdir -p "$USER_HOME/crashdiag/logs"
@@ -232,6 +264,8 @@ up() { "$PYTHON" -c "import urllib.request as u; u.urlopen('http://127.0.0.1:$PO
 for _ in $(seq 30); do up && break; sleep 0.5; done
 if up; then
   grn "✅ CoolPilot is running: http://127.0.0.1:$PORT"
-else
+elif [[ $INIT == systemd ]]; then
   red "⚠️  The service didn't answer yet. Check:  journalctl -u coolpilot -n 50"
+else
+  red "⚠️  The service didn't answer yet. Check:  tail -n 50 /var/log/coolpilot.log"
 fi

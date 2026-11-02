@@ -26,8 +26,9 @@ cd frontend && npm run build && cd ../backend && uv run python tests/demo_server
 
 **Continuous integration** — every push runs the backend tests on Python 3.9–3.14, type-checks and
 builds the UI (and checks the committed `frontend/dist` matches), runs shellcheck, and installs,
-uses and uninstalls CoolPilot in systemd containers of Ubuntu, Debian, Fedora, openSUSE and Arch
-(`ci/distro-test.sh`).
+uses and uninstalls CoolPilot in systemd containers of Ubuntu, Debian, Fedora, openSUSE and Arch,
+and in an Alpine/OpenRC container (`ci/distro-test.sh`, run against both `ci/Dockerfile` and
+`ci/Dockerfile.openrc`).
 
 ## How it works
 
@@ -46,6 +47,12 @@ The one exception: touchpad/mouse sensitivity isn't sysfs at all — it's owned 
 session is logged in, so `coolpilot/desktop.py` reaches into that user's own D-Bus bus / compositor
 socket (the same way `alerts.py` delivers a desktop notification) to read and set it. See
 `coolpilot/hw/pointer.py`.
+
+Crash/boot history (`diag.crash_history()`) normally comes from `journalctl`. On a system with no
+systemd-journald (OpenRC: Alpine, Gentoo, Artix, Devuan...) it falls back to the black box's own
+data instead (`blackbox.boots_from_samples()`): a boot with no "clean shutdown" marker - written by
+a SIGTERM handler every init system triggers before a real shutdown/reboot, see
+`blackbox.install_shutdown_handler()` - is treated as a crash.
 
 Saved state lives in `/etc/coolpilot/` (`config.json`, `profiles.json`, `stability.json`, `token`).
 Black-box recordings and history live in `/var/lib/coolpilot/blackbox.db` (SQLite, every reading
@@ -72,7 +79,8 @@ backend/            Flask API (Python)
   tests/              pytest suite against a fake sysfs tree, plus demo_server.py
 frontend/           React + TypeScript + Vite UI
 crashdiag/          standalone crash-test script
-systemd/            service units + udev rule
-ci/                 install test on Ubuntu, Debian, Fedora, openSUSE and Arch (used by GitHub Actions)
-install.sh / uninstall.sh
+systemd/            service units + udev rule (systemd distros)
+openrc/             init scripts + udev rule + elogind sleep hook (OpenRC distros)
+ci/                 install test on Ubuntu, Debian, Fedora, openSUSE, Arch and Alpine/OpenRC (GitHub Actions)
+install.sh / uninstall.sh   detect systemd vs OpenRC and install the matching one
 ```

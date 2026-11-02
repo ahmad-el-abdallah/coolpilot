@@ -2,14 +2,23 @@
 # Remove CoolPilot (settings you applied stay until reboot; hardware resets to defaults on reboot).
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "Run with sudo: sudo ./uninstall.sh"; exit 1; }
-systemctl disable --now coolpilot.service coolpilot-boot.service coolpilot-resume.service 2>/dev/null || true
-rm -f /etc/systemd/system/coolpilot{,-boot,-resume}.service /etc/udev/rules.d/90-coolpilot.rules
-# leftovers from the old name, if any
-systemctl disable --now tuf-control.service tuf-control-boot.service tuf-control-resume.service 2>/dev/null || true
-rm -f /etc/systemd/system/tuf-control{,-boot,-resume}.service /etc/udev/rules.d/90-tuf-control.rules
-rm -rf /opt/tuf-control
-udevadm control --reload 2>/dev/null || true   # no udev daemon in containers
-systemctl daemon-reload
+if [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null; then
+  systemctl disable --now coolpilot.service coolpilot-boot.service coolpilot-resume.service 2>/dev/null || true
+  rm -f /etc/systemd/system/coolpilot{,-boot,-resume}.service /etc/udev/rules.d/90-coolpilot.rules
+  # leftovers from the old name, if any
+  systemctl disable --now tuf-control.service tuf-control-boot.service tuf-control-resume.service 2>/dev/null || true
+  rm -f /etc/systemd/system/tuf-control{,-boot,-resume}.service /etc/udev/rules.d/90-tuf-control.rules
+  rm -rf /opt/tuf-control
+  udevadm control --reload 2>/dev/null || true   # no udev daemon in containers
+  systemctl daemon-reload
+elif command -v rc-service >/dev/null; then
+  rc-update del coolpilot-boot default 2>/dev/null || true
+  rc-update del coolpilot default 2>/dev/null || true
+  rc-service coolpilot stop 2>/dev/null || true
+  rm -f /etc/init.d/coolpilot{,-boot,-resume} /etc/udev/rules.d/90-coolpilot.rules
+  rm -f /usr/lib/elogind/system-sleep/coolpilot
+  udevadm control --reload 2>/dev/null || true   # no udev daemon in containers
+fi
 rm -rf /opt/coolpilot
 rm -f /usr/local/bin/coolpilot
 USER_HOME=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)

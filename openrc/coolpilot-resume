@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+# CoolPilot - re-apply the last profile after sleep or charger plug/unplug.
+# OpenRC equivalent of systemd/coolpilot-resume.service. Never added to a
+# runlevel - started on demand by the udev rule (AC change) and by the
+# elogind system-sleep hook (resume), see coolpilot-sleep.
+
+name="CoolPilot resume"
+description="CoolPilot - re-apply the last profile after sleep or charger plug/unplug"
+
+start() {
+	ebegin "Re-applying CoolPilot's profile"
+	sleep 2
+	local rc
+	COOLPILOT_USER="@USER@" PYTHONPATH=/opt/coolpilot/backend /opt/coolpilot/venv/bin/python -m coolpilot.apply_boot --reapply
+	rc=$?
+	[ "$rc" -le 1 ] && rc=0
+	eend "$rc"
+}

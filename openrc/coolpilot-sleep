@@ -1,0 +1,9 @@
+#!/bin/sh
+# CoolPilot: re-apply the last profile after resume. elogind implements the
+# same /usr/lib/elogind/system-sleep/ hook convention as systemd-logind's
+# system-sleep (for the non-systemd desktops that have elogind, e.g. OpenRC) -
+# called as "<this> pre|post sleep|suspend|hibernate|...". On systemd this
+# isn't needed: coolpilot-resume.service is WantedBy=suspend.target instead.
+[ "$1" = post ] || exit 0
+command -v rc-service >/dev/null 2>&1 && rc-service coolpilot-resume start
+exit 0

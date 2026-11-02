@@ -1,0 +1,26 @@
+#!/sbin/openrc-run
+# CoolPilot web panel (http://127.0.0.1:8787) - OpenRC equivalent of systemd/coolpilot.service
+
+name="CoolPilot"
+description="CoolPilot web panel"
+command="/opt/coolpilot/venv/bin/python"
+command_args="-m coolpilot"
+directory="/opt/coolpilot/backend"
+supervisor="supervise-daemon"
+pidfile="/run/coolpilot.pid"
+respawn_delay=3
+output_log="/var/log/coolpilot.log"
+error_log="/var/log/coolpilot.log"
+
+export COOLPILOT_USER="@USER@"
+export COOLPILOT_DIST="/opt/coolpilot/frontend/dist"
+export PYTHONUNBUFFERED=1
+
+depend() {
+	need net
+	after power-profiles-daemon
+}
+
+start_pre() {
+	checkpath -d -m 0755 -o root:root /var/lib/coolpilot
+}

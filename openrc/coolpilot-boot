@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+# CoolPilot - re-apply the saved boot profile. OpenRC equivalent of
+# systemd/coolpilot-boot.service: runs once per boot, after the service itself
+# and after any power-profile daemon (which restores its own profile first).
+
+name="CoolPilot boot"
+description="CoolPilot - re-apply the saved boot profile"
+
+depend() {
+	after power-profiles-daemon tuned
+}
+
+start() {
+	ebegin "Applying CoolPilot's boot profile"
+	sleep 3
+	local rc
+	COOLPILOT_USER="@USER@" PYTHONPATH=/opt/coolpilot/backend /opt/coolpilot/venv/bin/python -m coolpilot.apply_boot
+	rc=$?
+	# exit 1 = some setting was skipped (e.g. firmware-locked on battery) - expected, not a failure
+	[ "$rc" -le 1 ] && rc=0
+	eend "$rc"
+}

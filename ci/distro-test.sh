@@ -1,25 +1,44 @@
 #!/usr/bin/env bash
-# Runs inside a systemd container (CI): install CoolPilot like a user would, use it, remove it.
+# Runs inside a systemd or OpenRC container (CI): install CoolPilot like a
+# user would, use it, remove it.
 #   docker exec <container> bash /src/ci/distro-test.sh
 set -euo pipefail
 cd /src
 step() { printf '\n==== %s\n' "$*"; }
 
-step "waiting for systemd"
-for _ in $(seq 60); do
-  s=$(systemctl is-system-running 2>/dev/null || true)
-  [[ $s == running || $s == degraded ]] && break
-  sleep 1
-done
-echo "systemd: $s"
+if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then
+  INIT=systemd
+elif command -v rc-service >/dev/null; then
+  INIT=openrc
+else
+  echo "neither systemd nor OpenRC found"; exit 1
+fi
+echo "init system: $INIT"
+
+step "waiting for $INIT"
+if [[ $INIT == systemd ]]; then
+  for _ in $(seq 60); do
+    s=$(systemctl is-system-running 2>/dev/null || true)
+    [[ $s == running || $s == degraded ]] && break
+    sleep 1
+  done
+  echo "systemd: $s"
+else
+  rc-status >/dev/null   # fails loudly if the runlevels never came up
+fi
 
 step "install.sh --check"
 ./install.sh --check
 
 step "install"
 SUDO_USER=tester ./install.sh
-systemctl is-active coolpilot.service
-systemctl is-enabled coolpilot-boot.service coolpilot-resume.service
+if [[ $INIT == systemd ]]; then
+  systemctl is-active coolpilot.service
+  systemctl is-enabled coolpilot-boot.service coolpilot-resume.service
+else
+  rc-service coolpilot status | grep -q started
+  rc-update show default | grep -q coolpilot-boot
+fi
 
 step "the web app answers, and only with the token"
 python3 - <<'PY'
@@ -45,12 +64,29 @@ coolpilot alerts off && coolpilot alerts on
 if coolpilot alerts test; then echo "a test alert can't be shown without a desktop"; exit 1; fi
 
 step "the boot service runs"
-systemctl start coolpilot-boot.service || true   # nothing to apply on a fresh install
-journalctl -u coolpilot-boot.service -n 5 --no-pager || true
+if [[ $INIT == systemd ]]; then
+  systemctl start coolpilot-boot.service || true   # nothing to apply on a fresh install
+  journalctl -u coolpilot-boot.service -n 5 --no-pager || true
+else
+  rc-service coolpilot-boot start || true          # nothing to apply on a fresh install
+fi
+
+step "a clean stop is recorded (crash history with no journald)"
+if [[ $INIT == openrc ]]; then
+  rc-service coolpilot restart
+  sleep 1
+  rc-service coolpilot stop
+  sqlite3 /var/lib/coolpilot/blackbox.db "SELECT COUNT(*) FROM shutdowns" | grep -qv '^0$'
+  rc-service coolpilot start
+fi
 
 step "uninstall"
 printf 'n\nn\n' | ./uninstall.sh
-if systemctl is-active --quiet coolpilot.service; then echo "service still running"; exit 1; fi
+if [[ $INIT == systemd ]]; then
+  if systemctl is-active --quiet coolpilot.service; then echo "service still running"; exit 1; fi
+else
+  if rc-service coolpilot status 2>/dev/null | grep -q started; then echo "service still running"; exit 1; fi
+fi
 [[ ! -e /usr/local/bin/coolpilot && ! -d /opt/coolpilot ]]
 [[ -d /etc/coolpilot ]]    # kept: the user said N
 echo "OK"

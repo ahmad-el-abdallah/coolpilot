@@ -1,0 +1,10 @@
+# An Alpine/OpenRC image, for testing install.sh / uninstall.sh on a non-systemd
+# init system (see ci/distro-test.sh). Run with `docker run --init` (no systemd
+# here to reap zombies - supervise-daemon needs a real reaper as PID 1's parent).
+ARG IMAGE=alpine:3.20
+FROM ${IMAGE}
+COPY prepare-openrc.sh /prepare.sh
+RUN sh /prepare.sh
+COPY openrc-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

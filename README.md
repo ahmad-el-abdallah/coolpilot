@@ -75,12 +75,13 @@ cool and steady to reduce freezes until it is repaired.
 
 ## Requirements
 
-Works on **any Linux distribution with systemd** — Arch / Manjaro / EndeavourOS, Debian / Ubuntu /
-Mint / Pop!_OS, Fedora, openSUSE, and others — with any desktop (GNOME, KDE, Hyprland, Sway, X11 or Wayland).
+Works on **any Linux distribution with systemd or OpenRC** — Arch / Manjaro / EndeavourOS, Debian /
+Ubuntu / Mint / Pop!_OS, Fedora, openSUSE, Alpine, Gentoo, Artix (OpenRC variant), Devuan and others —
+with any desktop (GNOME, KDE, Hyprland, Sway, X11 or Wayland).
 
 | Needed | Why |
 |---|---|
-| **systemd** | runs the panel and re-applies settings after boot / sleep |
+| **systemd or OpenRC** | runs the panel and re-applies settings after boot / sleep |
 | **Python 3.9+** with `venv` | the backend (tested on Python 3.9 to 3.14) |
 | **A laptop** — ideally ASUS TUF / ROG | the ASUS-specific features use the kernel's `asus-wmi` / `asus-armoury` drivers; AMD or Intel CPU, NVIDIA or no dGPU |
 | Node.js 20.19+ / 22.12+ *(optional)* | only to rebuild the UI — a prebuilt UI is included |
@@ -102,6 +103,12 @@ sudo dnf install git python3 stress-ng glmark2
 
 # openSUSE (Leap needs python311; Tumbleweed's python3 is fine)
 sudo zypper install git python311 stress-ng glmark2 power-profiles-daemon
+
+# Alpine
+sudo apk add git python3 stress-ng glmark2
+
+# Gentoo
+sudo emerge dev-vcs/git dev-lang/python sys-apps/stress-ng media-libs/glmark2
 ```
 
 Package names can differ slightly between releases, and some distros split glmark2 into separate
@@ -118,8 +125,9 @@ X11 / Wayland / ES2 builds — any of them works.
 | Keyboard RGB color/effect | `kbd_rgb_mode` (asus-wmi, most TUF/ROG models) — write-only, so CoolPilot remembers the last value it set |
 | Touchpad/mouse sensitivity | a supported desktop session: Hyprland and Sway are applied directly; GNOME and KDE Plasma persist on their own; X11 falls back to `xinput` |
 
-Not supported: distros without systemd (Void, Alpine, Artix/OpenRC), and NixOS through the
-installer (paths like `/opt` and `/etc/systemd/system` are managed declaratively there).
+Not supported: distros whose init system is neither systemd nor OpenRC (e.g. Void/runit,
+s6, dinit), and NixOS through the installer (paths like `/opt` and `/etc/systemd/system` —
+or `/etc/init.d`, on OpenRC — are managed declaratively there).
 
 ---
 
@@ -142,7 +150,7 @@ Then open **http://127.0.0.1:8787** — or launch **CoolPilot** from your app la
    otherwise use the prebuilt one,
 3. copy the app to `/opt/coolpilot` and create a Python venv with Flask + Waitress,
 4. create a secret API token in `/etc/coolpilot/token`,
-5. install and enable the systemd services:
+5. install and enable the services (systemd units, or OpenRC init scripts on Alpine/Gentoo/Artix/...):
    - `coolpilot` — the web panel (port **8787**, localhost only)
    - `coolpilot-boot` — re-applies your "apply at boot" profile and fan mode after boot
    - `coolpilot-resume` — re-applies after sleep and when the charger is plugged / unplugged
@@ -155,7 +163,7 @@ Then open **http://127.0.0.1:8787** — or launch **CoolPilot** from your app la
 `asusctl` (`asusd`), TLP, auto-cpufreq, TuneD and laptop-mode-tools also change power modes,
 CPU boost, fan curves or charge limits, and can silently undo changes made here. The installer
 and the Dashboard warn when one of them is running — use one tool for these settings, e.g.
-`sudo systemctl disable --now tlp`.
+`sudo systemctl disable --now tlp` (systemd) or `sudo rc-update del tlp && sudo rc-service tlp stop` (OpenRC).
 
 ### Update
 
