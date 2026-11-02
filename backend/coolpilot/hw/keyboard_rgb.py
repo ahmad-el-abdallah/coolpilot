@@ -19,15 +19,19 @@ from __future__ import annotations
 from . import sysfs
 
 MODES = {"static": 0, "breathing": 1, "color_cycle": 2, "strobe": 3}
-RGB_FILE = f"{sysfs.KBD}/kbd_rgb_mode"
 
 
 class KeyboardError(ValueError):
     pass
 
 
+def _rgb_file() -> str | None:
+    d = sysfs.kbd_backlight_dir()
+    return f"{d}/kbd_rgb_mode" if d and sysfs.exists(f"{d}/kbd_rgb_mode") else None
+
+
 def available() -> bool:
-    return sysfs.exists(RGB_FILE)
+    return _rgb_file() is not None
 
 
 def _validate(mode: str, rgb: tuple[int, int, int], speed: int) -> tuple[int, int, int, int]:
@@ -45,7 +49,7 @@ def set(mode: str, rgb: tuple[int, int, int], speed: int, *, _save: bool = True)
         raise KeyboardError("keyboard RGB isn't exposed by this kernel")
     mode_n, r, g, b, speed = _validate(mode, rgb, speed)
     try:
-        sysfs.write(RGB_FILE, f"1 {mode_n} {r} {g} {b} {speed}")
+        sysfs.write(_rgb_file(), f"1 {mode_n} {r} {g} {b} {speed}")
     except OSError as e:
         raise KeyboardError(f"kbd_rgb_mode: write failed ({e.strerror or e})")
     if _save:

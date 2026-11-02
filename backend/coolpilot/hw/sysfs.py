@@ -269,7 +269,12 @@ def _led(rel_fn: Callable[[], str | None], attr: str) -> Callable[[], list[str]]
     return f
 
 
-KBD = "sys/class/leds/asus::kbd_backlight"
+def kbd_backlight_dir() -> str | None:
+    """Any vendor's keyboard-backlight LED, by the kernel's own naming
+    convention (`<driver>::kbd_backlight`) - not just ASUS's. Prefers an ASUS
+    one if more than one is somehow present (e.g. a USB keyboard's own LED)."""
+    found = glob_rel("sys/class/leds/*::kbd_backlight")
+    return next((d for d in found if d.startswith("sys/class/leds/asus::")), found[0] if found else None)
 
 SETTINGS: dict[str, Setting] = {s.key: s for s in [
     Setting(
@@ -343,8 +348,8 @@ SETTINGS: dict[str, Setting] = {s.key: s for s in [
         keywords=["battery", "charge", "limit", "health", "80"]),
     Setting(
         key="kbd_backlight", label="Keyboard backlight", group="display", kind="int",
-        paths=lambda: [f"{KBD}/brightness"] if exists(KBD) else [],
-        min=lambda: 0, max=lambda: read_int(f"{KBD}/max_brightness", 3),
+        paths=lambda: [f"{kbd_backlight_dir()}/brightness"] if kbd_backlight_dir() else [],
+        min=lambda: 0, max=lambda: read_int(f"{kbd_backlight_dir()}/max_brightness", 3),
         help="Keyboard light level.", keywords=["keyboard", "light", "rgb", "backlight"]),
     Setting(
         key="screen_brightness", label="Screen brightness", group="display", kind="int",

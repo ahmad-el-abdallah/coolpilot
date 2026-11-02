@@ -113,6 +113,27 @@ def test_keyboard_rgb_validation(client):
     assert client.post("/api/keyboard", json={"mode": "static", "rgb": [0, 0, 0], "speed": 9}).status_code == 400
 
 
+def test_kbd_backlight_works_on_non_asus_led_name(client):
+    """Keyboard backlight brightness (and RGB, if the vendor exposes it) must work
+    off the kernel's own `<driver>::kbd_backlight` LED-class convention, not just
+    ASUS's literal name - so it isn't ASUS-exclusive on hardware that also has one."""
+    import os
+    import shutil
+
+    from coolpilot.hw import sysfs
+    asus_dir = os.path.join(sysfs.ROOT, "sys/class/leds/asus::kbd_backlight")
+    other_dir = os.path.join(sysfs.ROOT, "sys/class/leds/dell::kbd_backlight")
+    shutil.move(asus_dir, other_dir)
+    try:
+        s = client.get("/api/settings").get_json()
+        kbd = next(x for x in s if x["key"] == "kbd_backlight")
+        assert kbd["available"] is True and kbd["max"] == 3
+        assert client.post("/api/settings/kbd_backlight", json={"value": 2}).status_code == 200
+        assert read("sys/class/leds/dell::kbd_backlight/brightness") == "2"
+    finally:
+        shutil.move(other_dir, asus_dir)
+
+
 def test_keyboard_rgb_not_available(client, monkeypatch):
     from coolpilot.hw import keyboard_rgb
     monkeypatch.setattr(keyboard_rgb, "available", lambda: False)
