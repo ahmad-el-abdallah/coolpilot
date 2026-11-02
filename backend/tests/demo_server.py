@@ -25,7 +25,7 @@ os.environ["COOLPILOT_PORT"] = str(PORT)
 os.environ["COOLPILOT_DIST"] = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 
 from coolpilot import alerts, blackbox, diag, profiles, stability  # noqa: E402
-from coolpilot.hw import gpu  # noqa: E402
+from coolpilot.hw import gpu, pointer  # noqa: E402
 
 NOW = time.time()
 DAY = 86400
@@ -135,10 +135,54 @@ def fake_blackbox() -> None:
     con.close()
 
 
+FAKE_INPUT_LUA = """-- Personal input configuration for Omarchy (example)
+hl.config({
+  input = {
+    kb_layout = "us",
+    repeat_rate = 40,
+    repeat_delay = 250,
+
+    -- BEGIN COOLPILOT POINTER (managed by CoolPilot - edits only this block) --
+    sensitivity = 0.0,
+    accel_profile = "flat",
+    -- END COOLPILOT POINTER --
+
+    touchpad = {
+      natural_scroll = true,
+      scroll_factor = 0.4,
+    },
+  },
+})
+"""
+
+
+def fake_pointer() -> None:
+    """Pointer speed and input.lua come from the logged-in desktop session, not
+    sysfs (see hw/pointer.py) - fake them too, so the demo never reads this
+    machine's real Hyprland session or its real input.lua."""
+    state = {"touchpad": -0.35, "mouse": 0.15}
+
+    def describe():
+        return {"desktop": "hyprland",
+                "touchpad": {"available": True, "value": state["touchpad"], "min": pointer.MIN, "max": pointer.MAX},
+                "mouse": {"available": True, "value": state["mouse"], "min": pointer.MIN, "max": pointer.MAX}}
+
+    def set_(kind, value):
+        state[kind] = value
+        return describe()
+
+    pointer.describe = describe
+    pointer.set = set_
+    pointer.hypr_input_lua = lambda: {"available": True, "content": FAKE_INPUT_LUA, "path": "~/.config/hypr/input.lua"}
+    pointer.set_hypr_input_lua = lambda content: {
+        "available": True, "content": content, "path": "~/.config/hypr/input.lua", "backup": "input.lua.bak.example"}
+
+
 def fake_settings() -> None:
     profiles.save_current("Uni lectures", "Silent and cool for long days on battery")
     stability.turn_on()
     profiles.set_boot("Stability")
+    profiles.update_config(keyboard_rgb={"mode": "breathing", "rgb": [255, 140, 0], "speed": 1})
     profiles.update_config(warranty={"start": "2025-06-01", "end": "2027-06-01", "territory": "International", "note": None},
                            crash_seen=BOOTS[1]["boot_id"],
                            report_symptoms="Freezes or restarts when the laptop is lifted or moved while busy. "
@@ -176,6 +220,7 @@ def main() -> None:
                             "temp": 47.0, "watts": 11.8, "mhz": 210.0, "mem_mhz": 405.0, "usage": 3.0,
                             "vram_used": 412.0, "vram_total": 8188.0, "pstate": "P8", "driver": "580.95"}
     alerts.sessions = lambda: [(1000, "/nonexistent")]   # looks logged in; nothing can be shown
+    fake_pointer()
     fake_blackbox()
     fake_settings()
     blackbox._last = {"ts": time.time(), "gpu_temp": 47.0, "gpu_state": "active"}

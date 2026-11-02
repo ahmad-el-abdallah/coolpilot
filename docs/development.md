@@ -40,6 +40,12 @@ Everything is plain Linux sysfs — no vendor tools required:
 | CPU & GPU power limits | `/sys/class/firmware-attributes/asus-armoury/attributes/` |
 | Fan curves | hwmon `asus_custom_fan_curve` (`pwmN_auto_pointM_{temp,pwm}`, `pwmN_enable`) |
 | Charge limit | `/sys/class/power_supply/BAT*/charge_control_end_threshold` |
+| Keyboard RGB | `/sys/class/leds/asus::kbd_backlight/kbd_rgb_mode` (write-only; CoolPilot remembers the last value and replays it on boot/resume) |
+
+The one exception: touchpad/mouse sensitivity isn't sysfs at all — it's owned by whichever desktop
+session is logged in, so `coolpilot/desktop.py` reaches into that user's own D-Bus bus / compositor
+socket (the same way `alerts.py` delivers a desktop notification) to read and set it. See
+`coolpilot/hw/pointer.py`.
 
 Saved state lives in `/etc/coolpilot/` (`config.json`, `profiles.json`, `stability.json`, `token`).
 Black-box recordings and history live in `/var/lib/coolpilot/blackbox.db` (SQLite, every reading
@@ -52,7 +58,9 @@ and the last 2 minutes before every crash forever — a few MB in total.
 backend/            Flask API (Python)
   coolpilot/app.py          routes + serving the built UI
   coolpilot/security.py     host check + token
-  coolpilot/hw/             sysfs settings whitelist, sensors, fans, GPU
+  coolpilot/hw/             sysfs settings whitelist, sensors, fans, GPU, keyboard RGB
+  coolpilot/desktop.py      reach into a logged-in user's session (D-Bus, compositor) from root
+  coolpilot/hw/pointer.py   touchpad/mouse sensitivity per desktop (Hyprland, Sway, GNOME, KDE, X11)
   coolpilot/profiles.py     profiles, apply order, boot / resume re-apply, factory reset
   coolpilot/stability.py    configurable Stability mode
   coolpilot/fanmode.py      Default / Stability / Custom fan mode that sticks

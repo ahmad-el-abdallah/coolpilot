@@ -59,6 +59,7 @@ def build():
     w("sys/class/power_supply/BAT1/scope", "System")
     w("sys/class/leds/asus::kbd_backlight/brightness", 1)
     w("sys/class/leds/asus::kbd_backlight/max_brightness", 3)
+    w("sys/class/leds/asus::kbd_backlight/kbd_rgb_mode", "")  # write-only on real hardware
     w("sys/class/hwmon/hwmon5/name", "k10temp")
     w("sys/class/hwmon/hwmon5/temp1_input", 55000)
     w("sys/class/hwmon/hwmon9/name", "asus_custom_fan_curve")

@@ -337,6 +337,7 @@ def apply_boot(reapply: bool = False) -> dict:
     the charger is plugged/unplugged): Stability mode if it's on, else the last
     applied profile, else the boot one. The fan mode is always put back."""
     from . import fanmode, stability
+    from .hw import keyboard_rgb
     cfg = config()
     results: dict = {}
     if reapply and stability.is_on():
@@ -349,6 +350,7 @@ def apply_boot(reapply: bool = False) -> dict:
         if name and get(name) is not None:
             results = apply(name)
     results.update(fanmode.enforce())
+    results.update(keyboard_rgb.enforce())
     return results
 
 

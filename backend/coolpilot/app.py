@@ -12,7 +12,7 @@ import time
 from flask import Flask, jsonify, request, send_from_directory
 
 from . import alerts, backup, battery, blackbox, diag, fanmode, profiles, report, security, stability
-from .hw import fans, gpu, sensors, sysfs
+from .hw import fans, gpu, keyboard_rgb, pointer, sensors, sysfs
 from .hw.device import device_name
 
 DIST = os.environ.get(
@@ -169,6 +169,46 @@ def create_app(token: str | None = None) -> Flask:
             return _err(str(e))
         profiles.update_config(active_profile=None)
         return jsonify(res)
+
+    @app.get("/api/pointer")
+    def api_pointer():
+        return jsonify(pointer.describe())
+
+    @app.get("/api/pointer/input-lua")
+    def api_pointer_input_lua():
+        return jsonify(pointer.hypr_input_lua())
+
+    @app.post("/api/pointer/input-lua")
+    def api_pointer_input_lua_set():
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify(pointer.set_hypr_input_lua(str(body.get("content", ""))))
+        except pointer.PointerError as e:
+            return _err(str(e))
+
+    @app.post("/api/pointer/<kind>")
+    def api_pointer_set(kind):
+        body = request.get_json(silent=True) or {}
+        if "value" not in body:
+            return _err("missing 'value'")
+        try:
+            return jsonify(pointer.set(kind, float(body["value"])))
+        except (pointer.PointerError, TypeError, ValueError) as e:
+            return _err(str(e))
+
+    @app.get("/api/keyboard")
+    def api_keyboard():
+        return jsonify(keyboard_rgb.state())
+
+    @app.post("/api/keyboard")
+    def api_keyboard_set():
+        body = request.get_json(silent=True) or {}
+        try:
+            rgb = tuple(int(c) for c in body.get("rgb", (255, 255, 255)))
+            keyboard_rgb.set(str(body.get("mode")), rgb, int(body.get("speed", 0)))
+        except (keyboard_rgb.KeyboardError, TypeError, ValueError) as e:
+            return _err(str(e))
+        return jsonify(keyboard_rgb.state())
 
     @app.post("/api/fans/<int:fan>")
     def api_fan(fan):

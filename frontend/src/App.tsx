@@ -9,6 +9,7 @@ import { Diagnostics } from './pages/Diagnostics'
 import { Fans } from './pages/Fans'
 import { Gpu } from './pages/Gpu'
 import { History } from './pages/History'
+import { Input } from './pages/Input'
 import { Power } from './pages/Power'
 import { Profiles } from './pages/Profiles'
 import { Report } from './pages/Report'
@@ -36,6 +37,7 @@ const PAGES = [
   { id: 'fans', label: 'Fans', icon: '✱', keywords: 'fan curve rpm noise cooling' },
   { id: 'gpu', label: 'GPU', icon: '▣', keywords: 'nvidia rtx graphics' },
   { id: 'battery', label: 'Battery & Display', icon: '▭', keywords: 'charge limit brightness keyboard backlight screen' },
+  { id: 'input', label: 'Input & Keyboard', icon: '⌨', keywords: 'touchpad mouse pointer speed sensitivity keyboard rgb color backlight lighting aura effect' },
   { id: 'profiles', label: 'Profiles & backup', icon: '☰', keywords: 'save preset boot startup backup restore export import file reinstall' },
   { id: 'alerts', label: 'Alerts', icon: <BellIcon />, keywords: 'alerts notifications notify desktop popup warning hot temperature crash' },
   { id: 'history', label: 'History & black box', icon: '◷', keywords: 'history chart graph black box recorder crash timeline temperature over time' },
@@ -148,6 +150,10 @@ export default function App() {
     items.push({ id: 'factory-reset', title: 'Reset everything to default', hint: 'Dashboard', keywords: 'factory reset default first boot undo restore', run: () => go('dashboard', 'factory-reset') })
     items.push({ id: 'fan-1', title: 'CPU fan curve', hint: 'Fans', keywords: 'fan curve noise rpm', run: () => go('fans', 'fan-1') })
     items.push({ id: 'fan-2', title: 'GPU fan curve', hint: 'Fans', keywords: 'fan curve noise rpm', run: () => go('fans', 'fan-2') })
+    items.push({ id: 'pointer-touchpad', title: 'Touchpad speed', hint: 'Input & Keyboard', keywords: 'touchpad pointer sensitivity slow fast', run: () => go('input', 'pointer-touchpad') })
+    items.push({ id: 'pointer-mouse', title: 'Mouse speed', hint: 'Input & Keyboard', keywords: 'mouse pointer sensitivity slow fast', run: () => go('input', 'pointer-mouse') })
+    items.push({ id: 'keyboard-rgb', title: 'Keyboard lighting color & effect', hint: 'Input & Keyboard', keywords: 'rgb color effect static breathing strobe aura', run: () => go('input', 'keyboard-rgb') })
+    items.push({ id: 'hypr-input-lua', title: 'Download Hyprland input.lua', hint: 'Input & Keyboard', keywords: 'hyprland lua export share omarchy config download', run: () => go('input', 'hypr-input-lua') })
     action('a-full-once', 'Charge to 100% once', 'battery full trip charge limit 100', () => api.post('/battery/full-once', { enabled: true }), 'Charging to 100% once')
     items.push({ id: 'last-crash', title: 'What happened in the last crash', hint: 'History', keywords: 'black box freeze crash reset recording', run: () => go('history') })
     items.push({ id: 'repair-report', title: 'Make a repair report (PDF)', hint: 'Repair report', keywords: 'asus warranty service center print pdf', run: () => go('report') })
@@ -187,6 +193,7 @@ export default function App() {
             {page === 'fans' && <Fans />}
             {page === 'gpu' && <Gpu />}
             {page === 'battery' && <Battery />}
+            {page === 'input' && <Input />}
             {page === 'profiles' && <Profiles />}
             {page === 'alerts' && <Alerts />}
             {page === 'history' && <History />}

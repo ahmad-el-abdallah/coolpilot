@@ -12,17 +12,13 @@ GNOME, KDE, mako, dunst, swaync, etc. implement.
 """
 from __future__ import annotations
 
-import os
-import pwd
 import shutil
-import subprocess
 import threading
 import time
 
 from . import profiles
+from .desktop import run_as_user, sessions
 
-RUN_USER = os.environ.get("COOLPILOT_RUN_USER", "/run/user")
-UID_MIN = 1000
 RECENT_MAX = 30
 PENDING_MAX_AGE = 3600  # an alert that found no desktop is retried for an hour (e.g. a crash alert at boot)
 
@@ -104,24 +100,6 @@ def is_on(kind: str) -> bool:
 # delivery
 # --------------------------------------------------------------------------- #
 
-def sessions() -> list[tuple[int, str]]:
-    """(uid, runtime dir) of every logged-in user with a session bus."""
-    me = os.geteuid()
-    out = []
-    try:
-        names = sorted(os.listdir(RUN_USER))
-    except OSError:
-        return []
-    for name in names:
-        if not name.isdigit():
-            continue
-        uid = int(name)
-        # root: every real user (not gdm/sddm greeters); a normal user: only themselves
-        if (uid >= UID_MIN if me == 0 else uid == me) and os.path.exists(os.path.join(RUN_USER, name, "bus")):
-            out.append((uid, os.path.join(RUN_USER, name)))
-    return out
-
-
 def _commands(title: str, body: str, critical: bool) -> list[list[str]]:
     urgency = "critical" if critical else "normal"
     cmds = []
@@ -143,20 +121,9 @@ def _commands(title: str, body: str, critical: bool) -> list[list[str]]:
 
 def _send_one(uid: int, rundir: str, title: str, body: str, critical: bool) -> str | None:
     """Show one notification on one user's desktop -> the tool that worked, or None."""
-    try:
-        home = pwd.getpwuid(uid).pw_dir
-        gid = pwd.getpwuid(uid).pw_gid
-    except KeyError:
-        return None
-    env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME": home,
-           "XDG_RUNTIME_DIR": rundir, "DBUS_SESSION_BUS_ADDRESS": f"unix:path={rundir}/bus"}
-    as_user = {"user": uid, "group": gid, "extra_groups": []} if os.geteuid() == 0 and uid != 0 else {}
     for cmd in _commands(title, body, critical):
-        try:
-            r = subprocess.run(cmd, env=env, capture_output=True, timeout=5, **as_user)
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if r.returncode == 0:
+        r = run_as_user(uid, rundir, cmd)
+        if r is not None and r.returncode == 0:
             return cmd[0]
     return None
 

@@ -94,6 +94,191 @@ def test_fan_curve_validation(client):
     assert client.post("/api/fans/7", json={"custom": True}).status_code == 400
 
 
+# ----------------------------------------------------------------- keyboard RGB
+def test_keyboard_rgb_roundtrip_and_reapplies_at_boot(client):
+    r = client.post("/api/keyboard", json={"mode": "breathing", "rgb": [10, 20, 30], "speed": 1})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body == {"available": True, "mode": "breathing", "rgb": [10, 20, 30], "speed": 1}
+    assert read("sys/class/leds/asus::kbd_backlight/kbd_rgb_mode") == "1 1 10 20 30 1"
+    assert client.get("/api/keyboard").get_json() == body
+
+    from coolpilot.hw import keyboard_rgb
+    assert keyboard_rgb.enforce() == {"keyboard_rgb": "ok"}
+
+
+def test_keyboard_rgb_validation(client):
+    assert client.post("/api/keyboard", json={"mode": "nope", "rgb": [0, 0, 0], "speed": 0}).status_code == 400
+    assert client.post("/api/keyboard", json={"mode": "static", "rgb": [999, 0, 0], "speed": 0}).status_code == 400
+    assert client.post("/api/keyboard", json={"mode": "static", "rgb": [0, 0, 0], "speed": 9}).status_code == 400
+
+
+def test_keyboard_rgb_not_available(client, monkeypatch):
+    from coolpilot.hw import keyboard_rgb
+    monkeypatch.setattr(keyboard_rgb, "available", lambda: False)
+    assert client.get("/api/keyboard").get_json()["available"] is False
+    assert client.post("/api/keyboard", json={"mode": "static", "rgb": [0, 0, 0], "speed": 0}).status_code == 400
+    assert keyboard_rgb.enforce() == {}
+
+
+# ----------------------------------------------------------------- pointer (touchpad/mouse) speed
+def test_pointer_not_available_with_no_session(client, monkeypatch):
+    from coolpilot.hw import pointer
+    monkeypatch.setattr(pointer, "sessions", lambda: [])
+    assert client.get("/api/pointer").get_json() == {
+        "desktop": None,
+        "touchpad": {"available": False, "value": None, "min": -1.0, "max": 1.0},
+        "mouse": {"available": False, "value": None, "min": -1.0, "max": 1.0},
+    }
+    assert client.post("/api/pointer/mouse", json={"value": 0.2}).status_code == 400
+
+
+def test_pointer_hyprland_roundtrip(client, monkeypatch, tmp_path):
+    import json as _json
+    from coolpilot.hw import pointer
+
+    rundir = tmp_path / "run"
+    (rundir / "hypr" / "sig1").mkdir(parents=True)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(pointer, "sessions", lambda: [(1000, str(rundir))])
+    monkeypatch.setattr(pointer.pwd, "getpwuid", lambda uid: type("P", (), {"pw_dir": str(home)})())
+
+    devices = {"mice": [{"name": "abcd-mouse"}, {"name": "abcd-touchpad"}]}
+
+    class R:
+        def __init__(self, returncode=0, stdout=""):
+            self.returncode, self.stdout = returncode, stdout
+
+    def fake_run(uid, rd, cmd, **kw):
+        if cmd[:3] == ["hyprctl", "-j", "devices"]:
+            return R(stdout=_json.dumps(devices))
+        if cmd[:3] == ["hyprctl", "-j", "getoption"]:
+            return R(stdout='{"option": "input:sensitivity", "float": 0.1}')
+        if cmd == ["hyprctl", "reload"]:
+            return R()
+        return R(returncode=1)
+
+    monkeypatch.setattr(pointer, "run_as_user", fake_run)
+
+    body = client.get("/api/pointer").get_json()
+    assert body["desktop"] == "hyprland"
+    assert body["mouse"]["value"] == 0.1 and body["touchpad"]["value"] == 0.1
+
+    r = client.post("/api/pointer/touchpad", json={"value": -0.4})
+    assert r.status_code == 200
+    assert r.get_json()["touchpad"]["value"] == -0.4
+
+    text = (home / ".config" / "hypr" / "input.lua").read_text()
+    assert pointer.HYPR_BEGIN in text and pointer.HYPR_END in text
+    assert 'name = "abcd-touchpad", sensitivity = -0.4' in text
+
+
+def test_pointer_value_and_kind_validated(client, monkeypatch):
+    from coolpilot.hw import pointer
+    monkeypatch.setattr(pointer, "sessions", lambda: [(1000, "/nonexistent")])
+    assert client.post("/api/pointer/mouse", json={"value": 2}).status_code == 400
+    assert client.post("/api/pointer/nonsense", json={"value": 0.1}).status_code == 400
+
+
+def test_pointer_input_lua_export(client, monkeypatch, tmp_path):
+    from coolpilot.hw import pointer
+    rundir = tmp_path / "run"
+    (rundir / "hypr" / "sig1").mkdir(parents=True)
+    home = tmp_path / "home"
+    (home / ".config" / "hypr").mkdir(parents=True)
+    (home / ".config" / "hypr" / "input.lua").write_text("-- my config\n")
+    monkeypatch.setattr(pointer, "sessions", lambda: [(1000, str(rundir))])
+    monkeypatch.setattr(pointer.pwd, "getpwuid", lambda uid: type("P", (), {"pw_dir": str(home)})())
+
+    body = client.get("/api/pointer/input-lua").get_json()
+    assert body == {"available": True, "content": "-- my config\n", "path": str(home / ".config" / "hypr" / "input.lua")}
+
+
+def test_pointer_input_lua_not_available_without_session(client, monkeypatch):
+    from coolpilot.hw import pointer
+    monkeypatch.setattr(pointer, "sessions", lambda: [])
+    assert client.get("/api/pointer/input-lua").get_json() == {"available": False, "content": None, "path": None}
+
+
+class _R:
+    def __init__(self, returncode=0, stdout=""):
+        self.returncode, self.stdout = returncode, stdout
+
+
+def test_pointer_input_lua_apply_roundtrip(client, monkeypatch, tmp_path):
+    import os
+    from coolpilot.hw import pointer
+    rundir = tmp_path / "run"
+    (rundir / "hypr" / "sig1").mkdir(parents=True)
+    home = tmp_path / "home"
+    (home / ".config" / "hypr").mkdir(parents=True)
+    original = "-- old config\n"
+    path = home / ".config" / "hypr" / "input.lua"
+    path.write_text(original)
+    monkeypatch.setattr(pointer, "sessions", lambda: [(1000, str(rundir))])
+    monkeypatch.setattr(pointer.pwd, "getpwuid", lambda uid: type("P", (), {"pw_dir": str(home)})())
+
+    def fake_run(uid, rd, cmd, **kw):
+        if cmd == ["hyprctl", "configerrors"]:
+            return _R(stdout="")
+        if cmd == ["hyprctl", "reload"]:
+            return _R()
+        return _R(returncode=1)
+    monkeypatch.setattr(pointer, "run_as_user", fake_run)
+
+    new_content = '-- new config\nhl.device({ name = "x", sensitivity = 0.1 })\n'
+    body = client.post("/api/pointer/input-lua", json={"content": new_content}).get_json()
+    assert body["available"] is True
+    assert body["content"] == new_content
+    assert body["backup"] and os.path.exists(body["backup"])
+    assert open(body["backup"]).read() == original
+    assert path.read_text() == new_content
+
+
+def test_pointer_input_lua_apply_rolls_back_on_new_error(client, monkeypatch, tmp_path):
+    from coolpilot.hw import pointer
+    rundir = tmp_path / "run"
+    (rundir / "hypr" / "sig1").mkdir(parents=True)
+    home = tmp_path / "home"
+    (home / ".config" / "hypr").mkdir(parents=True)
+    original = "-- old config\n"
+    path = home / ".config" / "hypr" / "input.lua"
+    path.write_text(original)
+    monkeypatch.setattr(pointer, "sessions", lambda: [(1000, str(rundir))])
+    monkeypatch.setattr(pointer.pwd, "getpwuid", lambda uid: type("P", (), {"pw_dir": str(home)})())
+
+    calls = {"n": 0}
+
+    def fake_run(uid, rd, cmd, **kw):
+        if cmd == ["hyprctl", "configerrors"]:
+            calls["n"] += 1
+            return _R(stdout="" if calls["n"] == 1 else "Config error: bad syntax")
+        if cmd == ["hyprctl", "reload"]:
+            return _R()
+        return _R(returncode=1)
+    monkeypatch.setattr(pointer, "run_as_user", fake_run)
+
+    r = client.post("/api/pointer/input-lua", json={"content": "broken(("})
+    assert r.status_code == 400
+    assert "restored" in r.get_json()["error"]
+    assert path.read_text() == original
+
+
+def test_pointer_input_lua_apply_rejects_empty(client, monkeypatch, tmp_path):
+    from coolpilot.hw import pointer
+    rundir = tmp_path / "run"
+    (rundir / "hypr" / "sig1").mkdir(parents=True)
+    monkeypatch.setattr(pointer, "sessions", lambda: [(1000, str(rundir))])
+    assert client.post("/api/pointer/input-lua", json={"content": "   "}).status_code == 400
+
+
+def test_pointer_input_lua_apply_without_session(client, monkeypatch):
+    from coolpilot.hw import pointer
+    monkeypatch.setattr(pointer, "sessions", lambda: [])
+    assert client.post("/api/pointer/input-lua", json={"content": "x = 1"}).status_code == 400
+
+
 # ----------------------------------------------------------------- profiles
 def test_stability_on_and_off(client):
     r = client.post("/api/stability", json={"enabled": True})
@@ -921,11 +1106,11 @@ def test_crash_alert_once_per_crash(client, shown):
 
 def test_alert_delivery_uses_each_users_session_bus(client, monkeypatch, tmp_path):
     import os
-    from coolpilot import alerts
+    from coolpilot import alerts, desktop
     for uid in ("1000", "120"):                                # a user and a login-screen account
         (tmp_path / uid).mkdir()
         (tmp_path / uid / "bus").touch()
-    monkeypatch.setattr(alerts, "RUN_USER", str(tmp_path))
+    monkeypatch.setattr(desktop, "RUN_USER", str(tmp_path))
     monkeypatch.setattr(os, "geteuid", lambda: 0)
     assert [u for u, _ in alerts.sessions()] == [1000]
     calls = []
@@ -933,8 +1118,8 @@ def test_alert_delivery_uses_each_users_session_bus(client, monkeypatch, tmp_pat
     class Done:
         returncode = 0
     monkeypatch.setattr(alerts.shutil, "which", lambda t: f"/usr/bin/{t}" if t == "busctl" else None)
-    monkeypatch.setattr(alerts.pwd, "getpwuid", lambda uid: type("P", (), {"pw_dir": "/home/u", "pw_gid": 1000})())
-    monkeypatch.setattr(alerts.subprocess, "run", lambda cmd, **kw: calls.append((cmd, kw)) or Done())
+    monkeypatch.setattr(desktop.pwd, "getpwuid", lambda uid: type("P", (), {"pw_dir": "/home/u", "pw_gid": 1000})())
+    monkeypatch.setattr(desktop.subprocess, "run", lambda cmd, **kw: calls.append((cmd, kw)) or Done())
     r = alerts.deliver("Title", "Body")
     assert r == {"sent": 1, "via": ["busctl"]}
     cmd, kw = calls[0]

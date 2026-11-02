@@ -131,6 +131,13 @@ export type AlertItem = {
 export type AlertEvent = { id: string; kind: string; ts: number; title: string; body: string; critical: boolean; sent: number | null }
 export type AlertsState = { enabled: boolean; items: AlertItem[]; recent: AlertEvent[]; desktops: number; tools: string[] }
 
+export type PointerSide = { available: boolean; value: number | null; min: number; max: number }
+export type PointerState = { desktop: string | null; touchpad: PointerSide; mouse: PointerSide }
+export type HyprInputLua = { available: boolean; content: string | null; path: string | null; backup?: string | null }
+
+export type KeyboardRgbMode = 'static' | 'breathing' | 'color_cycle' | 'strobe'
+export type KeyboardRgbState = { available: boolean; mode: KeyboardRgbMode; rgb: [number, number, number]; speed: number }
+
 export type BackupInfo = {
   device: string | null; exported: number | null; this_device: string
   profiles: string[]; stability_items: number; stability_on?: boolean; preferences: string[]; warnings: string[]

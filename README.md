@@ -39,8 +39,11 @@ cool and steady to reduce freezes until it is repaired.
     <td><img src="docs/screenshots/fans.png" alt="Fans page: Default, Stability and Custom fan modes and a curve editor"><br><sub><b>Fans</b>: fan modes that stick, drag-and-drop curve editor</sub></td>
   </tr>
   <tr>
+    <td><img src="docs/screenshots/input.png" alt="Input & Keyboard page: touchpad and mouse sensitivity, Hyprland input.lua export/import, and keyboard RGB color/effect/speed"><br><sub><b>Input & Keyboard</b>: touchpad/mouse speed, Hyprland input.lua, keyboard RGB lighting</sub></td>
     <td><img src="docs/screenshots/alerts.png" alt="Alerts page: desktop alerts with a switch for each one"><br><sub><b>Alerts</b>: desktop notifications, each one can be switched off</sub></td>
-    <td><img src="docs/screenshots/report.png" alt="Repair report for the service center"><br><sub><b>Repair report</b>: everything the service center needs, as PDF or HTML</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/report.png" alt="Repair report for the service center"><br><sub><b>Repair report</b>: everything the service center needs, as PDF or HTML</sub></td>
   </tr>
 </table>
 
@@ -58,6 +61,7 @@ cool and steady to reduce freezes until it is repaired.
 | **Fans** | Fan mode buttons: **Default** (factory) or **Stability** (steady, never-stop curve). Drag-and-drop 8-point curve editor per fan. The choice sticks across reboot, sleep and mode changes. |
 | **GPU** | NVIDIA Dynamic Boost and temperature target, live GPU stats (doesn't wake a sleeping GPU). |
 | **Battery & Display** | Charge limit (e.g. 80%), battery health, screen brightness, keyboard backlight, panel overdrive. |
+| **Input & Keyboard** | Touchpad and mouse sensitivity, applied straight to your desktop session (Hyprland, Sway, GNOME, KDE Plasma or X11 — whichever is running). On Hyprland, export your `input.lua` to share with other Omarchy users or apply one someone shared with you. Keyboard RGB: color (swatches or a picker), effect (static, breathing, color cycle, strobe) and speed, on ASUS keyboards that expose it. |
 | **Alerts** | Desktop notifications when the CPU gets too hot, when Stability mode turns off, and after a freeze or unexpected restart. Turn all alerts off at once or each one separately, set the temperature threshold, send a test alert, and see recent alerts. Works with any desktop that shows notifications (GNOME, KDE, Hyprland/mako, Sway, …). |
 | **Profiles & backup** | Built-in Stability, Quiet, Balanced, Performance, **Gaming** (Turbo, full boost, highest power limits the firmware allows, maximum GPU boost, cooler fan curve) and **Factory defaults** (Balanced on battery, Turbo on the charger, switching by itself). Save your own, apply them, or set one to apply at every boot. **Export all settings to one file** and import them after a reinstall, on another distro or on another laptop (values are fitted to the new machine's limits). |
 | **History & black box** | An always-on recorder writes temperatures, load, fans and power to disk every 2 s. After a freeze or reset you see **what the laptop was doing in its last 2 minutes**, plus charts over 6 hours to 90 days with crash markers and Stability-mode periods. |
@@ -111,6 +115,8 @@ X11 / Wayland / ES2 builds — any of them works.
 | CPU & GPU power limits, GPU Dynamic Boost | the `asus-armoury` driver (recent kernels) |
 | Custom fan curves | `asus_custom_fan_curve` (kernel 5.17+, most TUF/ROG models) |
 | CPU boost switch | AMD (`amd-pstate` / `acpi-cpufreq`) or Intel (`intel_pstate`) |
+| Keyboard RGB color/effect | `kbd_rgb_mode` (asus-wmi, most TUF/ROG models) — write-only, so CoolPilot remembers the last value it set |
+| Touchpad/mouse sensitivity | a supported desktop session: Hyprland and Sway are applied directly; GNOME and KDE Plasma persist on their own; X11 falls back to `xinput` |
 
 Not supported: distros without systemd (Void, Alpine, Artix/OpenRC), and NixOS through the
 installer (paths like `/opt` and `/etc/systemd/system` are managed declaratively there).
