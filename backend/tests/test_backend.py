@@ -863,6 +863,76 @@ def test_blackbox_prune_and_toggle(client):
     assert client.post("/api/blackbox/seen", json={"boot": CRASH_BOOT}).get_json()["seen"] == CRASH_BOOT
 
 
+def test_crash_history_dispatches_on_journalctl_presence(monkeypatch):
+    """No journalctl on this init system (e.g. OpenRC) -> use the black box's
+    own data instead of the (empty-anyway) journal-backed path, and vice versa."""
+    from coolpilot import blackbox, diag
+    calls = {"blackbox": 0, "journal": 0}
+    monkeypatch.setattr(blackbox, "boots_from_samples",
+                        lambda limit=30: calls.__setitem__("blackbox", calls["blackbox"] + 1) or [])
+    monkeypatch.setattr(diag, "_list_boots", lambda: calls.__setitem__("journal", calls["journal"] + 1) or [])
+
+    monkeypatch.setattr(diag.shutil, "which", lambda name: None)
+    diag.crash_history()
+    assert calls == {"blackbox": 1, "journal": 0}
+
+    monkeypatch.setattr(diag.shutil, "which", lambda name: "/usr/bin/journalctl")
+    diag.crash_history()
+    assert calls == {"blackbox": 1, "journal": 1}
+
+
+def test_boots_from_samples_without_journalctl(client, monkeypatch):
+    """The same boot/crash classification diag.crash_history() normally gets
+    from journalctl, built instead from the black box's own minutes/samples
+    and the clean-shutdown marker a SIGTERM handler writes."""
+    import time
+    from coolpilot import blackbox, diag
+    monkeypatch.setattr(diag.shutil, "which", lambda name: None)
+    now = time.time() // 60 * 60
+    CLEAN_BOOT = "c" * 32
+    con = blackbox.connect()
+    for i in range(3):
+        blackbox.record(con, _row(now - 10000 + i * 2, CLEAN_BOOT))
+    blackbox.rollup(con, until=now - 9000)
+    blackbox.mark_clean_shutdown(CLEAN_BOOT, now - 9000)
+    for i in range(3):
+        blackbox.record(con, _row(now - 5000 + i * 2, CRASH_BOOT))  # no shutdown marker -> crash
+    blackbox.rollup(con, until=now - 4000)
+    blackbox.record(con, _row(now - 10, NOW_BOOT))  # still running, no rolled-up minute yet
+
+    boots = diag.crash_history()
+    assert [b["boot_id"] for b in boots] == [NOW_BOOT, CRASH_BOOT, CLEAN_BOOT]  # newest first
+    by_id = {b["boot_id"]: b for b in boots}
+    assert by_id[NOW_BOOT]["ending"] == "running" and by_id[NOW_BOOT]["index"] == 0
+    assert by_id[CRASH_BOOT]["ending"] == "crash" and by_id[CRASH_BOOT]["index"] == -1
+    assert by_id[CLEAN_BOOT]["ending"] == "clean" and by_id[CLEAN_BOOT]["index"] == -2
+
+
+def test_boots_from_samples_empty_without_db(monkeypatch):
+    from coolpilot import blackbox, diag
+    monkeypatch.setattr(diag.shutil, "which", lambda name: None)
+    assert diag.crash_history() == []
+    assert blackbox.boots_from_samples() == []
+
+
+def test_machine_checks_falls_back_to_dmesg_without_journalctl(monkeypatch):
+    from coolpilot import report
+
+    def fake_run(cmd, **kw):
+        class R:
+            stdout = ""
+        if cmd[0] == "journalctl":
+            raise FileNotFoundError("no journalctl")
+        if cmd[0] == "dmesg":
+            r = R()
+            r.stdout = "2026-01-01T00:00:00 kernel: [Hardware Error]: something bad\nordinary line\n"
+            return r
+        raise AssertionError(cmd)
+    monkeypatch.setattr(report.subprocess, "run", fake_run)
+    out = report._machine_checks(30)
+    assert out == {"checked": True, "count": 1, "examples": [out["examples"][0]], "current_boot_only": True}
+
+
 def test_repair_report(client, monkeypatch):
     import os
     import time

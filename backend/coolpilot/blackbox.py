@@ -10,11 +10,20 @@ aggregates (`minutes`), kept for a year; raw rows are kept for SAMPLE_DAYS.
 
 The NVIDIA GPU is only queried every GPU_EVERY seconds (nvidia-smi keeps a
 sleeping GPU awake and costs battery); everything else is plain sysfs reads.
+
+This is also the only source of boot/crash history on a system with no
+systemd-journald (diag.crash_history() falls back to it): `shutdowns` records
+one row per boot that stopped cleanly, written by install_shutdown_handler()'s
+SIGTERM handler, which every init system sends a service before stopping it
+(for a real shutdown/reboot, not just restarting the service). A boot with no
+row there - and that isn't the one currently running - ended without stopping
+cleanly, i.e. a freeze, reset or power loss.
 """
 from __future__ import annotations
 
 import json
 import os
+import signal
 import sqlite3
 import threading
 import time
@@ -42,6 +51,7 @@ CREATE TABLE IF NOT EXISTS minutes (
   cpu_usage REAL, bat_w REAL, fan REAL, ac INTEGER, stability INTEGER, profile TEXT,
   PRIMARY KEY (ts, boot));
 CREATE TABLE IF NOT EXISTS crashes (boot TEXT PRIMARY KEY, start REAL, end REAL, samples TEXT);
+CREATE TABLE IF NOT EXISTS shutdowns (boot TEXT PRIMARY KEY, ts REAL);
 """
 
 
@@ -65,6 +75,72 @@ def boot_id() -> str:
 
 def enabled() -> bool:
     return profiles.config().get("blackbox", True) is not False
+
+
+# --------------------------------------------------------------------------- #
+# clean-shutdown marker (init-system-agnostic boot/crash detection)
+# --------------------------------------------------------------------------- #
+
+def mark_clean_shutdown(boot: str | None = None, ts: float | None = None) -> None:
+    con = connect()
+    try:
+        con.execute("INSERT OR REPLACE INTO shutdowns (boot, ts) VALUES (?, ?)",
+                    (boot or boot_id(), ts if ts is not None else time.time()))
+        con.commit()
+    finally:
+        con.close()
+
+
+def _on_sigterm(signum, frame) -> None:
+    try:
+        mark_clean_shutdown()
+    except (sqlite3.Error, OSError):
+        pass
+    os._exit(0)
+
+
+def install_shutdown_handler() -> None:
+    """Call once, from the main thread, before the server starts serving. Every
+    init system sends SIGTERM to stop a service - for a real shutdown/reboot,
+    not just `systemctl restart`/`rc-service restart` - so this is how a clean
+    stop gets recorded regardless of init system; see module docstring."""
+    signal.signal(signal.SIGTERM, _on_sigterm)
+
+
+def boots_from_samples(limit: int = 30) -> list[dict]:
+    """Boot list built purely from this module's own data - used by
+    diag.crash_history() when journalctl isn't available. `ending` comes from
+    the shutdown marker above, not log text."""
+    if not os.path.exists(db_path()):
+        return []
+    current = boot_id()
+    con = connect()
+    try:
+        rollup(con)  # catch up the current boot's last finished minute
+        rows = con.execute(
+            "SELECT boot, MIN(ts) AS start, MAX(ts) AS last FROM minutes GROUP BY boot "
+            "ORDER BY start DESC LIMIT ?", (limit,)).fetchall()
+        boots = {r["boot"]: {"start": r["start"], "last": r["last"]} for r in rows}
+        if current not in boots:
+            # too new for a rolled-up minute yet - fall back to the raw samples
+            r = con.execute("SELECT MIN(ts) AS start, MAX(ts) AS last FROM samples WHERE boot = ?",
+                            (current,)).fetchone()
+            if r and r["start"] is not None:
+                boots[current] = {"start": r["start"], "last": r["last"]}
+        clean = {r["boot"] for r in con.execute("SELECT boot FROM shutdowns")}
+    finally:
+        con.close()
+    ordered = sorted(boots.items(), key=lambda kv: kv[1]["start"], reverse=True)[:limit]
+    out = []
+    rank = 0
+    for boot, span in ordered:
+        running = boot == current
+        index = 0 if running else -(rank := rank + 1)
+        end = time.time() if running else span["last"] + 60
+        out.append({"index": index, "boot_id": boot, "start": span["start"], "end": end,
+                    "ending": "running" if running else ("clean" if boot in clean else "crash"),
+                    "minutes": round((end - span["start"]) / 60, 1)})
+    return out
 
 
 # --------------------------------------------------------------------------- #

@@ -6,6 +6,7 @@ from .security import PORT
 
 if __name__ == "__main__":
     from . import battery, blackbox
+    blackbox.install_shutdown_handler()  # marks a clean stop, for crash history with no journald
     blackbox.start()          # always-on recorder (only in the service, not in tests)
     battery.start_watcher()   # ends "charge to 100% once" when the battery is full
     serve(create_app(), host="127.0.0.1", port=PORT, threads=8)

@@ -259,7 +259,12 @@ def _list_boots() -> list[dict]:
 
 
 def crash_history(limit: int = 30) -> list[dict]:
-    """Boots whose journal ends without any shutdown messages = crash/freeze/reset."""
+    """Boots whose journal ends without any shutdown messages = crash/freeze/reset.
+    Falls back to the black box's own data (blackbox.boots_from_samples) when
+    there's no systemd-journald to ask - e.g. OpenRC distros."""
+    if not shutil.which("journalctl"):
+        from . import blackbox
+        return blackbox.boots_from_samples(limit)
     boots = _list_boots()
     out = []
     for b in boots[-limit:]:

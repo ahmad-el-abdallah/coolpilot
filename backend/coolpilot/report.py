@@ -31,10 +31,19 @@ def _machine_checks(days: int) -> dict:
     try:
         out = subprocess.run(["journalctl", "-k", "--no-pager", "-q", "-o", "short-iso",
                               "--since", f"-{days}d"], capture_output=True, text=True, timeout=60).stdout
+        hits = [ln for ln in out.splitlines() if MCE.search(ln)]
+        return {"checked": True, "count": len(hits), "examples": hits[:5]}
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # no systemd-journald (e.g. OpenRC): dmesg only holds the current boot's
+    # kernel ring buffer, not `days` of history across reboots, but it's
+    # better than reporting nothing.
+    try:
+        out = subprocess.run(["dmesg"], capture_output=True, text=True, timeout=15).stdout
     except (OSError, subprocess.TimeoutExpired):
         return {"checked": False, "count": 0, "examples": []}
     hits = [ln for ln in out.splitlines() if MCE.search(ln)]
-    return {"checked": True, "count": len(hits), "examples": hits[:5]}
+    return {"checked": True, "count": len(hits), "examples": hits[:5], "current_boot_only": True}
 
 
 def _tests(crashes: list[dict]) -> list[dict]:

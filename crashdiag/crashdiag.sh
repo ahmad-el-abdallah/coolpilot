@@ -44,8 +44,13 @@ monitor() {
   mapfile -t SPD < <(for d in /sys/class/hwmon/hwmon*; do [[ $(<"$d/name") == spd5118 ]] && echo "$d"; done)
 
   # kernel messages (PCIe/AER errors, GPU falling off the bus, NVMe resets, MCE...)
-  ( journalctl -kf -n 0 -o short-precise 2>&1 | while IFS= read -r l; do
-      echo "$l" >> "$kl"; sync "$kl"; done ) &
+  if command -v journalctl >/dev/null; then
+    ( journalctl -kf -n 0 -o short-precise 2>&1 | while IFS= read -r l; do
+        echo "$l" >> "$kl"; sync "$kl"; done ) &
+  else  # no systemd-journald (e.g. OpenRC) - dmesg's own ring-buffer follow mode
+    ( dmesg -w 2>&1 | while IFS= read -r l; do
+        echo "$l" >> "$kl"; sync "$kl"; done ) &
+  fi
 
   echo "time        test  cpuT  cpuMHz load  ramT1 ramT2 ssdT  fan1 fan2  AC batV   batW  gpuT gpuW  gpuMHz" >> "$log"
   while :; do
@@ -125,9 +130,17 @@ cmd_report() {
   echo; echo "== kernel messages captured during test:"
   tail -n 30 "${log%.log}.kernel.log" 2>/dev/null
   echo; echo "== end of previous boot's kernel log:"
-  journalctl -b -1 -k --no-pager -o short-precise | tail -n 15
+  if command -v journalctl >/dev/null; then
+    journalctl -b -1 -k --no-pager -o short-precise | tail -n 15
+  else
+    echo "(needs systemd-journald's persistent log across boots - not available on this init system)"
+  fi
   echo; echo "== hardware errors reported at this boot (MCE from the crash show up here):"
-  journalctl -b 0 -k --no-pager | grep -iE "hardware error|machine check|mce:|aer|pcie bus error|nvme.*(reset|timeout)|Xid|fallen off" || echo "(none)"
+  if command -v journalctl >/dev/null; then
+    journalctl -b 0 -k --no-pager | grep -iE "hardware error|machine check|mce:|aer|pcie bus error|nvme.*(reset|timeout)|Xid|fallen off" || echo "(none)"
+  else
+    dmesg | grep -iE "hardware error|machine check|mce:|aer|pcie bus error|nvme.*(reset|timeout)|Xid|fallen off" || echo "(none)"
+  fi
   echo; echo "== previous results:"; cat "$DIR/results.txt" 2>/dev/null
 }
 
