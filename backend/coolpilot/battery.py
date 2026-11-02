@@ -67,6 +67,35 @@ def stop(reason: str = "cancelled", restore: bool = True) -> dict:
     return state()
 
 
+def enforce_boot_limit() -> dict:
+    """Re-apply the charge limit the user last set directly (Battery & Display
+    page) or via a profile - the same way fan mode and keyboard RGB "stick".
+    Called unconditionally at boot/resume (profiles.apply_boot). An active
+    "charge to 100% once" override, or Stability mode managing its own charge
+    limit, both already take care of it and win here."""
+    from . import stability
+    try:
+        s = _limit_setting()
+    except BatteryError:
+        return {}
+    if active():
+        return {}
+    if stability.is_on() and stability.settings_config()["items"]["charge_limit"]["enabled"]:
+        return {}
+    stored = profiles.config().get("charge_limit_boot")
+    if stored is None:
+        return {}
+    try:
+        value, _ = profiles.resolve("charge_limit", stored)
+    except profiles.Skip:
+        return {}
+    try:
+        s.set(value)
+        return {"charge_limit": "ok"}
+    except sysfs.SettingError as e:
+        return {"charge_limit": str(e)}
+
+
 def tick(now: float | None = None) -> str | None:
     """End the override when the battery is full or the time is up."""
     o = active()

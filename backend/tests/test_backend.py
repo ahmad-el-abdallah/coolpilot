@@ -1020,6 +1020,55 @@ def test_charge_full_once_without_charge_limit(client):
     assert r.status_code == 400 and "doesn't support" in r.get_json()["error"]
 
 
+# ----------------------------------------------------------------- charge limit sticks across reboot
+def test_charge_limit_set_by_hand_survives_a_cold_boot(client):
+    """Was resetting to 100% on every reboot unless the user also had a boot
+    profile set - charge_limit had no persistence of its own, unlike fan mode."""
+    from conftest import w
+    from coolpilot import profiles
+    client.post("/api/settings/charge_limit", json={"value": 80})
+    assert profiles.config().get("boot_profile") is None  # no boot profile - nothing else would apply it
+    w(f"{BAT}/charge_control_end_threshold", 100)  # the firmware forgot it, like a real cold boot
+    results = profiles.apply_boot()
+    assert results["charge_limit"] == "ok"
+    assert read(f"{BAT}/charge_control_end_threshold") == "80"
+
+
+def test_charge_limit_from_a_profile_also_sticks_but_not_from_an_unrelated_one(client):
+    from conftest import w
+    from coolpilot import profiles
+    client.post("/api/settings/charge_limit", json={"value": 60})
+    client.post("/api/profiles", json={"name": "Trip", "description": ""})  # snapshots charge_limit=60
+    client.post("/api/profiles/Quiet/apply")  # doesn't mention charge_limit - leaves it alone
+    assert profiles.config().get("charge_limit_boot") == 60
+    assert read(f"{BAT}/charge_control_end_threshold") == "60"
+
+    client.post("/api/settings/charge_limit", json={"value": 100})  # pick a different value by hand
+    client.post("/api/profiles/Trip/apply")  # Trip's saved 60% overrides the hand-picked one, and sticks
+    assert profiles.config().get("charge_limit_boot") == 60
+    assert read(f"{BAT}/charge_control_end_threshold") == "60"
+
+    w(f"{BAT}/charge_control_end_threshold", 100)  # the firmware forgot it, like a real cold boot
+    profiles.apply_boot()
+    assert read(f"{BAT}/charge_control_end_threshold") == "60"
+
+
+def test_charge_limit_boot_defers_to_charge_once_and_stability(client):
+    from coolpilot import battery, profiles
+    client.post("/api/settings/charge_limit", json={"value": 70})
+    client.post("/api/battery/full-once", json={"enabled": True})
+    assert battery.enforce_boot_limit() == {}                     # "100% once" wins, untouched
+    assert read(f"{BAT}/charge_control_end_threshold") == "100"
+    client.post("/api/battery/full-once", json={"enabled": False})
+
+    client.post("/api/stability", json={"enabled": True})         # Stability manages charge_limit
+    assert battery.enforce_boot_limit() == {}                     # Stability's own apply() already did it
+    assert read(f"{BAT}/charge_control_end_threshold") == "80"    # Stability's recommended value
+    client.post("/api/stability", json={"enabled": False})
+    assert read(f"{BAT}/charge_control_end_threshold") == "70"    # back to the hand-picked limit
+    assert profiles.config().get("charge_limit_boot") == 70       # untouched by Stability turning on/off
+
+
 # ----------------------------------------------------------------- lightweight status + CLI
 def test_status_is_cheap_and_complete(client):
     s = client.get("/api/status").get_json()

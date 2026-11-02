@@ -165,6 +165,8 @@ def create_app(token: str | None = None) -> Flask:
                 res = sysfs.SETTINGS[key].describe()
             else:
                 res = sysfs.set_setting(key, body["value"])
+                if key == "charge_limit":
+                    profiles.update_config(charge_limit_boot=res["value"])  # sticks, like the Fans page mode
         except sysfs.SettingError as e:
             return _err(str(e))
         profiles.update_config(active_profile=None)

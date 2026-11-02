@@ -317,6 +317,9 @@ def apply(name: str) -> dict:
     elif spec:
         update_config(fan_mode="custom" if any(f.get("custom") for f in spec.values()) else "default",
                       fan_custom=spec)
+    # a profile's charge limit sticks the same way, like the Battery page choice
+    if "charge_limit" in prof.get("settings", {}):
+        update_config(charge_limit_boot=prof["settings"]["charge_limit"])
     # choosing another profile ends Stability mode (without restoring anything)
     update_config(active_profile=name if not name.startswith("_") else None, stability_on=False)
     results = apply_settings(prof.get("settings", {}))
@@ -335,8 +338,8 @@ def set_boot(name: str | None) -> dict:
 def apply_boot(reapply: bool = False) -> dict:
     """At boot: the "apply at boot" profile. With reapply (after sleep or when
     the charger is plugged/unplugged): Stability mode if it's on, else the last
-    applied profile, else the boot one. The fan mode is always put back."""
-    from . import fanmode, stability
+    applied profile, else the boot one. The fan mode and charge limit are always put back."""
+    from . import battery, fanmode, stability
     from .hw import keyboard_rgb
     cfg = config()
     results: dict = {}
@@ -351,6 +354,7 @@ def apply_boot(reapply: bool = False) -> dict:
             results = apply(name)
     results.update(fanmode.enforce())
     results.update(keyboard_rgb.enforce())
+    results.update(battery.enforce_boot_limit())
     return results
 
 
