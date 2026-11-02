@@ -1,3 +1,8 @@
 # CoolPilot: ASUS firmware swaps its power-limit tables when the charger is
 # plugged/unplugged, so re-apply the last profile (clamped to the new limits).
 SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ACTION=="change", RUN+="@RC_SERVICE@ coolpilot-resume start"
+# The firmware also reloads its own fan curves and power limits whenever the
+# performance mode (Silent/Balanced/Turbo) changes, from ANY source - the
+# Fn+F5 hotkey, power-profiles-daemon, another tool, not just CoolPilot's own
+# UI (which already re-applies them itself). Put them back then too.
+SUBSYSTEM=="platform-profile", ACTION=="change", RUN+="@RC_SERVICE@ coolpilot-resume start"

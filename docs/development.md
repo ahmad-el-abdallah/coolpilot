@@ -43,6 +43,15 @@ Everything is plain Linux sysfs — no vendor tools required:
 | Charge limit | `/sys/class/power_supply/BAT*/charge_control_end_threshold` |
 | Keyboard RGB | `/sys/class/leds/asus::kbd_backlight/kbd_rgb_mode` (write-only; CoolPilot remembers the last value and replays it on boot/resume) |
 
+The firmware reloads its own fan curves and power limits whenever the performance mode changes -
+wiping out CoolPilot's fan mode / Stability settings - so `coolpilot-resume` also runs on every
+such change, not just sleep and AC plug/unplug: the `platform-profile` class device emits a udev
+`change` event on every write, including from the Fn+F5 hotkey or another tool, so the systemd and
+OpenRC udev rules both match `SUBSYSTEM=="platform-profile"` too (`systemd/90-coolpilot.rules`,
+`openrc/90-coolpilot.rules`). Harmless to trigger from CoolPilot's own profile changes too (which
+already re-apply synchronously) - the kernel only emits the event when the value actually changes,
+so a same-value re-apply doesn't loop.
+
 The one exception: touchpad/mouse sensitivity isn't sysfs at all — it's owned by whichever desktop
 session is logged in, so `coolpilot/desktop.py` reaches into that user's own D-Bus bus / compositor
 socket (the same way `alerts.py` delivers a desktop notification) to read and set it. See

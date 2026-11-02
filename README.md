@@ -153,8 +153,10 @@ Then open **http://127.0.0.1:8787** — or launch **CoolPilot** from your app la
 5. install and enable the services (systemd units, or OpenRC init scripts on Alpine/Gentoo/Artix/...):
    - `coolpilot` — the web panel (port **8787**, localhost only)
    - `coolpilot-boot` — re-applies your "apply at boot" profile and fan mode after boot
-   - `coolpilot-resume` — re-applies after sleep and when the charger is plugged / unplugged
-     (via a udev rule; ASUS firmware swaps its power-limit tables then)
+   - `coolpilot-resume` — re-applies after sleep, when the charger is plugged / unplugged, and
+     whenever the performance mode changes from any source - Fn+F5, another tool, not just
+     CoolPilot itself (via two udev rules; ASUS firmware reloads its own fan curves and power
+     limits each time)
 6. copy the crash-test scripts to `~/crashdiag` (existing logs are left alone),
 7. add a "CoolPilot" launcher entry.
 
